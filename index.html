@@ -314,6 +314,23 @@
         <h3 class="h3" data-i18n="recent.title">Recent practice</h3>
         <ul class="recent" id="recent"></ul>
       </section>
+      <section class="card only-admin" id="activityCard">
+        <h2><span data-i18n="activity.title">Khawla's activity</span> <small data-i18n="activity.sub">while the app is open</small></h2>
+        <p class="presence-line" id="activityPresence">
+          <span class="presence-dot" id="activityDot" aria-hidden="true"></span>
+          <span id="activityPresenceText"></span>
+        </p>
+        <p class="muted small activity-when" id="activityWhen"></p>
+        <h3 class="h3" data-i18n="activity.today">Today</h3>
+        <div class="stats" id="activityToday"></div>
+        <p class="muted small" id="activitySpan"></p>
+        <h3 class="h3" data-i18n="activity.days">Last 14 days · minutes</h3>
+        <div class="week activity-bars" id="activityBars"></div>
+        <p class="status small" id="activitySync"></p>
+        <div class="row">
+          <button class="btn btn-soft" id="refreshActivity" type="button" data-i18n="activity.refresh">🔄 Refresh</button>
+        </div>
+      </section>
       <section class="card only-admin" id="khawlaCard">
         <h2><span data-i18n="her.title">Khawla's progress 🌷</span> <small data-i18n="her.sub">from her phone, when sync is on</small></h2>
         <p class="status small" id="khawlaSync"></p>
@@ -338,6 +355,7 @@
           <label class="switch"><input type="checkbox" id="transToggle"><span></span></label>
         </div>
         <p class="status small" id="syncStatus"></p>
+        <p class="muted small only-learner" id="activityNotice" data-i18n="activity.notice">Farouk can see when you practise and how long 💛</p>
         <div class="row">
           <button class="btn btn-soft" id="showGuide" type="button" data-i18n="guide.again">🐹 Show guide again</button>
           <button class="btn btn-soft" id="exportMine" type="button" data-i18n="export.mine">⬇️ Export progress</button>

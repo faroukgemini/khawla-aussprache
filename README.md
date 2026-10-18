@@ -53,12 +53,14 @@ Do this once, in order:
    - `farouk@aussprache.app`
    Use those exact addresses. They do not need to be real inboxes. Do not turn on email verification.
 4. **Build → Firestore Database → Create database.** Pick the Native / production mode (rules start locked) and a region near you, for example `eur3` (Europe).
-5. **Firestore → Rules**, replace everything with the contents of `firebase/firestore.rules` in this repo, then **Publish**.
+5. **Firestore → Rules**, replace everything with the contents of `firebase/firestore.rules` in this repo, then **Publish**. If an older copy is already published, paste this file again: Khawla's activity uses `users/khawla/meta/*`, and the previous rules denied every subcollection.
 6. **Project settings (gear) → General → Your apps → Web (`</>`) → Register app.** Copy `apiKey`, `authDomain`, `projectId`, and `appId` from the `firebaseConfig` snippet. You do not need Analytics.
 7. In the app, as Farouk: **Mehr → Cloud-Sync**. Paste those four values and the shared password. Tap **Sync speichern** (the page reloads), then **Sync testen**.
 8. **Link und QR erzeugen.** Leave **Azure-Schlüssel in den Link** off if the phone should only sync. Tick it when that phone should score speech for real, then open the new link on her phone (or let her scan the new QR) and type her name. The link's payload is in the URL hash, so GitHub Pages does not receive it, but it stays in browser history — don't post it. An older link that left the key out does not add a key later; make a new one with the box ticked, or enter the key on that phone.
 
 What syncs: each person's progress (`users/khawla`, `users/farouk`) and custom lessons (`shared/catalog`). After every attempt the phone uploads within about a second, and it also syncs when the app opens, comes online, or is hidden. If two phones practised offline, the merge keeps the higher best score per sentence and the union of attempts (same attempt id is stored once). A reset wins over older tries. Farouk's **Fortschritt** page can pull Khawla's latest document and shows when it was fetched.
+
+Khawla's practice activity is separate, so a heartbeat does not rewrite her progress: `users/khawla/meta/presence` (last seen, about once a minute while the app is open and the tab is visible, and once more when it hides) and `users/khawla/meta/activity` (about 60 days of session summaries: sessions, active minutes, sentences, average score, first and last time). A session ends after 5 minutes hidden. Farouk's progress page shows whether she is online, today, and the last 14 days, and it listens for presence while that page is open. The app stores no location and no audio. On **Mehr**, Khawla sees that Farouk can see when she practises and for how long.
 
 Export / import on **Mehr** is the backup if Firebase is down. "Alles exportieren" can include the Azure key only if that checkbox is on.
 

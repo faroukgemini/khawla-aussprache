@@ -599,6 +599,255 @@ function mergeCatalog(a, b) {
     };
   }
 
+  const ACTIVITY_TZ = "Africa/Casablanca";
+  const ACTIVITY_IDLE_MS = 5 * 60 * 1000;
+  const ACTIVITY_HEARTBEAT_MS = 60 * 1000;
+  const ACTIVITY_ONLINE_MS = 2 * 60 * 1000;
+  const ACTIVITY_KEEP_DAYS = 60;
+
+  function activityDayKey(ts) {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: ACTIVITY_TZ, year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(new Date(ts));
+  }
+
+  function activityWeekday(ts) {
+    const name = new Intl.DateTimeFormat("en-US", { timeZone: ACTIVITY_TZ, weekday: "short" }).format(new Date(ts));
+    return { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }[name] || 0;
+  }
+
+  function nextActivityMidnight(ts) {
+    const key = activityDayKey(ts);
+    let lo = ts + 1;
+    let hi = ts + 36 * 3600 * 1000;
+    while (lo < hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      if (activityDayKey(mid) === key) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  function activityDayStart(ts) {
+    const key = activityDayKey(ts);
+    let lo = ts - 36 * 3600 * 1000;
+    let hi = ts;
+    while (lo < hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      if (activityDayKey(mid) === key) hi = mid;
+      else lo = mid + 1;
+    }
+    return lo;
+  }
+
+  function recentActivityDays(now, n) {
+    const count = Math.max(1, Math.floor(n) || 1);
+    const out = [];
+    let t = now;
+    for (let i = 0; i < count; i++) {
+      out.push({ key: activityDayKey(t), at: t, weekday: activityWeekday(t) });
+      t = activityDayStart(t) - 1;
+    }
+    return out.reverse();
+  }
+
+  function blankActivityDay() {
+    return { sessions: 0, activeMs: 0, attempts: 0, scoreSum: 0, first: 0, last: 0 };
+  }
+
+  function normalizeActivityDay(d) {
+    const src = d || {};
+    return {
+      sessions: Math.max(0, Math.floor(Number(src.sessions) || 0)),
+      activeMs: Math.max(0, Math.floor(Number(src.activeMs) || 0)),
+      attempts: Math.max(0, Math.floor(Number(src.attempts) || 0)),
+      scoreSum: Math.max(0, Number(src.scoreSum) || 0),
+      first: Math.max(0, Number(src.first) || 0),
+      last: Math.max(0, Number(src.last) || 0),
+    };
+  }
+
+  function emptyActivity() {
+    return {
+      presence: { lastSeen: 0, visible: false },
+      track: { sessionOpen: false, hiddenAt: 0, visibleSince: 0 },
+      days: {},
+      updatedAt: 0,
+    };
+  }
+
+  function pruneActivityDays(days, now) {
+    const cutoff = activityDayKey(now - (ACTIVITY_KEEP_DAYS - 1) * DAY);
+    const out = {};
+    Object.keys(days || {}).forEach((k) => {
+      if (k >= cutoff) out[k] = days[k];
+    });
+    return out;
+  }
+
+  function readActivity(src) {
+    const raw = src || {};
+    const days = {};
+    Object.keys(raw.days || {}).forEach((k) => {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(k)) days[k] = normalizeActivityDay(raw.days[k]);
+    });
+    const p = raw.presence || {};
+    const t = raw.track || {};
+    return {
+      presence: {
+        lastSeen: Math.max(0, Number(p.lastSeen) || 0),
+        visible: !!p.visible,
+      },
+      track: {
+        sessionOpen: !!t.sessionOpen,
+        hiddenAt: Math.max(0, Number(t.hiddenAt) || 0),
+        visibleSince: Math.max(0, Number(t.visibleSince) || 0),
+      },
+      days,
+      updatedAt: Math.max(0, Number(raw.updatedAt) || 0),
+    };
+  }
+
+  function touchActivityDay(days, key) {
+    if (!days[key]) days[key] = blankActivityDay();
+    return days[key];
+  }
+
+  function addActiveMs(days, from, to) {
+    if (!(to > from)) return;
+    let cursor = from;
+    let guard = 0;
+    while (cursor < to && guard < 70) {
+      guard += 1;
+      const slice = Math.min(to, nextActivityMidnight(cursor));
+      const day = touchActivityDay(days, activityDayKey(cursor));
+      day.activeMs += slice - cursor;
+      if (!day.first || cursor < day.first) day.first = cursor;
+      if (slice > (day.last || 0)) day.last = slice;
+      cursor = slice;
+    }
+  }
+
+  function applyActivity(src, event) {
+    const now = Math.max(0, Number(event && event.at) || 0);
+    const kind = event && event.kind;
+    const a = readActivity(src);
+
+    function startSession() {
+      const day = touchActivityDay(a.days, activityDayKey(now));
+      day.sessions += 1;
+      if (!day.first) day.first = now;
+      if (now > (day.last || 0)) day.last = now;
+      a.track.sessionOpen = true;
+    }
+
+    function closeSession() {
+      a.track.sessionOpen = false;
+      a.track.visibleSince = 0;
+    }
+
+    function creditVisible(until) {
+      const since = a.track.visibleSince;
+      if (!since || until <= since) {
+        a.track.visibleSince = until || since || 0;
+        return;
+      }
+      if (until - since >= ACTIVITY_IDLE_MS) {
+        closeSession();
+        return;
+      }
+      addActiveMs(a.days, since, until);
+      a.track.visibleSince = until;
+    }
+
+    if (kind === "show") {
+      const already = a.presence.visible && a.track.visibleSince && !a.track.hiddenAt && a.track.sessionOpen;
+      if (already) {
+        creditVisible(now);
+      } else {
+        if (a.presence.visible && a.track.visibleSince) creditVisible(now);
+        const hiddenFor = a.track.hiddenAt ? now - a.track.hiddenAt : Infinity;
+        if (!a.track.sessionOpen || hiddenFor >= ACTIVITY_IDLE_MS) startSession();
+        a.track.visibleSince = now;
+      }
+      a.track.hiddenAt = 0;
+      a.presence.visible = true;
+      a.presence.lastSeen = now;
+    } else if (kind === "hide") {
+      if (a.presence.visible && a.track.visibleSince) creditVisible(now);
+      a.presence.visible = false;
+      a.presence.lastSeen = now;
+      a.track.hiddenAt = now;
+      a.track.visibleSince = 0;
+    } else if (kind === "tick") {
+      if (a.presence.visible) {
+        const since = a.track.visibleSince;
+        if (since && now - since >= ACTIVITY_IDLE_MS) {
+          closeSession();
+          startSession();
+          a.track.visibleSince = now;
+        } else {
+          creditVisible(now);
+        }
+        a.presence.lastSeen = now;
+        a.presence.visible = true;
+      } else {
+        return a;
+      }
+    } else if (kind === "attempt") {
+      if (!a.track.sessionOpen || (a.track.hiddenAt && now - a.track.hiddenAt >= ACTIVITY_IDLE_MS)) startSession();
+      if (a.presence.visible && a.track.visibleSince) creditVisible(now);
+      else a.track.visibleSince = a.track.visibleSince || now;
+      const day = touchActivityDay(a.days, activityDayKey(now));
+      const score = Math.max(0, Math.min(100, Number(event.score) || 0));
+      day.attempts += 1;
+      day.scoreSum += score;
+      if (!day.first) day.first = now;
+      if (now > (day.last || 0)) day.last = now;
+      a.track.hiddenAt = 0;
+      a.presence.visible = true;
+      a.presence.lastSeen = now;
+    } else {
+      return a;
+    }
+
+    a.days = pruneActivityDays(a.days, now);
+    a.updatedAt = now;
+    return a;
+  }
+
+  function mergeActivity(local, remote, now) {
+    const a = readActivity(local);
+    const b = readActivity(remote);
+    const days = {};
+    Object.keys(a.days).concat(Object.keys(b.days)).forEach((k) => {
+      if (days[k]) return;
+      const x = a.days[k] || blankActivityDay();
+      const y = b.days[k] || blankActivityDay();
+      const attempts = Math.max(x.attempts, y.attempts);
+      days[k] = {
+        sessions: Math.max(x.sessions, y.sessions),
+        activeMs: Math.max(x.activeMs, y.activeMs),
+        attempts,
+        scoreSum: attempts === x.attempts && attempts === y.attempts
+          ? Math.max(x.scoreSum, y.scoreSum)
+          : (x.attempts >= y.attempts ? x.scoreSum : y.scoreSum),
+        first: x.first && y.first ? Math.min(x.first, y.first) : (x.first || y.first),
+        last: Math.max(x.last, y.last),
+      };
+    });
+    const presence = a.presence.lastSeen >= b.presence.lastSeen ? a.presence : b.presence;
+    const remoteTrack = remote && remote.track && (remote.track.sessionOpen || remote.track.hiddenAt || remote.track.visibleSince);
+    const track = remoteTrack && b.updatedAt >= a.updatedAt ? b.track : a.track;
+    const at = Math.max(0, Number(now) || 0, a.updatedAt, b.updatedAt, presence.lastSeen);
+    return {
+      presence,
+      track,
+      days: pruneActivityDays(days, at || Date.now()),
+      updatedAt: Math.max(a.updatedAt, b.updatedAt),
+    };
+  }
+
   function bestScore(progress, id) {
     const b = progress && progress.best && progress.best[id];
     return b && typeof b.score === "number" ? b.score : null;
@@ -644,5 +893,17 @@ function mergeCatalog(a, b) {
     readStrictness,
     noSpeech,
     finalScore,
+    ACTIVITY_TZ,
+    ACTIVITY_IDLE_MS,
+    ACTIVITY_HEARTBEAT_MS,
+    ACTIVITY_ONLINE_MS,
+    ACTIVITY_KEEP_DAYS,
+    activityDayKey,
+    activityWeekday,
+    recentActivityDays,
+    emptyActivity,
+    readActivity,
+    applyActivity,
+    mergeActivity,
   };
 });

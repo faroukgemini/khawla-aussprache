@@ -4,8 +4,9 @@ rules_version = '2';
 // Create them in Authentication with the SAME password (the app's sync password):
 //   farouk@aussprache.app
 //   khawla@aussprache.app
-// Farouk (admin) can read and write both progress docs and the shared catalog.
-// Khawla can read and write only users/khawla, and can read shared/catalog.
+// Farouk (admin) can read and write both progress docs, Khawla's meta docs, and the shared catalog.
+// Khawla can read and write only users/khawla and users/khawla/meta/*, and can read shared/catalog.
+// meta holds a small presence heartbeat and daily practice summaries. It is not her progress doc.
 // There is no public read. The Firebase web apiKey is not a secret; these rules are.
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -26,6 +27,12 @@ service cloud.firestore {
       allow read: if isFarouk() || (isKhawla() && userId == "khawla");
       allow create, update: if isFarouk() || (isKhawla() && userId == "khawla");
       allow delete: if isFarouk();
+
+      match /meta/{docId} {
+        allow read: if isFarouk() || (isKhawla() && userId == "khawla");
+        allow create, update: if isFarouk() || (isKhawla() && userId == "khawla");
+        allow delete: if isFarouk();
+      }
     }
 
     match /shared/{docId} {

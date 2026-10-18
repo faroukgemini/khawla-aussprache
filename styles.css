@@ -241,6 +241,12 @@ button.text-link{background:none;border:0;padding:0;margin:0;color:#1f7a4d;font:
 .stat b{font-family:var(--font-head);font-size:2rem;display:block;line-height:1.1}
 .stat small{color:var(--muted);font-weight:700;font-size:.78rem}
 .week{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;align-items:end;height:150px}
+.activity-bars{grid-template-columns:repeat(14,1fr);gap:3px;height:112px}
+.activity-bars .day{font-size:.62rem;gap:2px}
+.presence-line{display:flex;align-items:center;gap:8px;font-weight:800;margin:8px 0 0;font-size:1.05rem}
+.presence-dot{width:12px;height:12px;border-radius:50%;background:#d9c6cf;flex:0 0 auto}
+.presence-dot.on{background:#2fbe6a;box-shadow:0 0 0 4px rgba(47,190,106,.22)}
+.activity-when{margin:2px 0 8px}
 .day{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:4px;font-size:.75rem;font-weight:800;color:var(--muted)}
 .day .col{width:100%;max-width:34px;border-radius:10px 10px 6px 6px;background:linear-gradient(180deg,var(--pink-2),var(--lav-2));min-height:6px;transition:height .6s}
 .day .col.zero{background:#f4ecf1}

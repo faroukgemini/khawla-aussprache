@@ -11,6 +11,7 @@
   const LS_CATALOG = "aussprache.catalog.v1";
   const LS_MIGRATED = "aussprache.migrated.v2";
   const LS_SYNC = "aussprache.syncmeta.v1";
+  const LS_ACTIVITY = "aussprache.activity.khawla.v1";
   const userKey = (id) => `aussprache.user.${id}.v1`;
 
   const $ = (s) => document.querySelector(s);
@@ -917,7 +918,7 @@ function loadProgress(id) {
     renderHeader();
     renderPractice();
     if ($("#view-review").classList.contains("active")) renderReview();
-    if ($("#view-progress").classList.contains("active")) { renderProgress(); renderKhawla(); }
+    if ($("#view-progress").classList.contains("active")) { renderProgress(); renderKhawla(); renderActivity(); }
     if ($("#view-settings").classList.contains("active")) renderSettings();
     renderSyncStatus();
     renderPet();
@@ -927,7 +928,7 @@ function loadProgress(id) {
     if (!["practice", "review", "progress", "settings"].includes(v)) v = "practice";
     $$(".view").forEach((el) => el.classList.toggle("active", el.id === "view-" + v));
     $$(".tab").forEach((t) => t.classList.toggle("active", t.dataset.view === v));
-    if (v === "progress") { renderProgress(); renderKhawla(); }
+    if (v === "progress") { renderProgress(); renderKhawla(); renderActivity(); }
     if (v === "settings") renderSettings();
     if (v === "review") renderReview();
     if (location.hash !== "#" + v) history.replaceState(null, "", "#" + v);
@@ -985,6 +986,7 @@ function loadProgress(id) {
     progress.cursor = { sentenceId: c.id, unitId: c.unit ? c.unit.id : null, at: now };
     saveProgress(session, progress);
     schedulePush();
+    if (session === "khawla" && !demo) activityEvent("attempt", { score });
     const prevStars = prevScore == null ? 0 : starsFor(prevScore);
     return { newStars: Math.max(0, starsFor(score) - prevStars), improved: prevScore != null && score > prevScore };
   }
@@ -1860,10 +1862,278 @@ function loadProgress(id) {
       setSyncMeta(session, { ok: false, at: Date.now(), error: friendlySync(e) });
       renderSyncStatus();
     } finally { syncing = false; }
+    if (session === "khawla") reconcileActivity().catch((e) => console.warn(e));
   }
   function schedulePush() {
     clearTimeout(syncTimer);
     syncTimer = setTimeout(() => { syncNow().catch(() => {}); }, 1200);
+  }
+
+  /* ---------------- Khawla's activity (separate from progress) ---------------- */
+  let activityTimer = null;
+  let activityClock = null;
+  let activityUnsub = [];
+  let activityReadyToPush = false;
+  let activityListenError = "";
+  let activityPushing = null;
+  let activityHiddenAt = 0;
+
+  function loadActivity() {
+    return L.readActivity(loadRaw(LS_ACTIVITY, null));
+  }
+  function saveActivity(state) {
+    saveRaw(LS_ACTIVITY, state);
+  }
+  function activityEvent(kind, extra) {
+    if (session !== "khawla") return loadActivity();
+    const next = L.applyActivity(loadActivity(), Object.assign({ kind, at: Date.now() }, extra || {}));
+    saveActivity(next);
+    pushActivity();
+    return next;
+  }
+  function startActivityHeartbeat() {
+    if (activityTimer || session !== "khawla" || document.visibilityState !== "visible") return;
+    activityTimer = setInterval(() => {
+      if (session !== "khawla" || document.visibilityState !== "visible") {
+        stopActivityHeartbeat();
+        return;
+      }
+      activityEvent("tick");
+    }, L.ACTIVITY_HEARTBEAT_MS);
+  }
+  function stopActivityHeartbeat() {
+    if (activityTimer) clearInterval(activityTimer);
+    activityTimer = null;
+  }
+  function onKhawlaVisible() {
+    if (session !== "khawla" || document.visibilityState !== "visible") return;
+    activityHiddenAt = 0;
+    activityEvent("show");
+    startActivityHeartbeat();
+  }
+  function onKhawlaHidden() {
+    if (session !== "khawla") return;
+    stopActivityHeartbeat();
+    const now = Date.now();
+    if (now - activityHiddenAt < 1000) return;
+    activityHiddenAt = now;
+    activityEvent("hide");
+  }
+  async function fetchActivityRemote() {
+    await signInRole(authRole());
+    const base = fbDb.collection("users").doc("khawla").collection("meta");
+    const [pres, act] = await Promise.all([base.doc("presence").get(), base.doc("activity").get()]);
+    const presence = pres.exists ? (pres.data() || {}) : {};
+    const body = act.exists ? (act.data() || {}) : {};
+    return {
+      presence: { lastSeen: Number(presence.lastSeen) || 0, visible: !!presence.visible },
+      days: body.days || {},
+      updatedAt: Number(body.updatedAt) || Number(presence.updatedAt) || 0,
+    };
+  }
+  async function writeActivityRemote(state) {
+    await signInRole("khawla");
+    const base = fbDb.collection("users").doc("khawla").collection("meta");
+    const at = state.updatedAt || Date.now();
+    const days = {};
+    Object.keys(state.days || {}).forEach((k) => {
+      const d = state.days[k];
+      days[k] = {
+        sessions: d.sessions || 0,
+        activeMs: d.activeMs || 0,
+        attempts: d.attempts || 0,
+        scoreSum: d.scoreSum || 0,
+        first: d.first || 0,
+        last: d.last || 0,
+      };
+    });
+    await Promise.all([
+      base.doc("presence").set({
+        lastSeen: state.presence.lastSeen || 0,
+        visible: !!state.presence.visible,
+        updatedAt: at,
+      }, { merge: true }),
+      base.doc("activity").set({ days, updatedAt: at }, { merge: true }),
+    ]);
+  }
+  function pushActivity() {
+    if (session !== "khawla" || !firebaseConfigured()) return;
+    const run = () => {
+      if (session !== "khawla" || !activityReadyToPush) return null;
+      return writeActivityRemote(loadActivity()).catch((e) => { console.warn(e); });
+    };
+    activityPushing = activityPushing ? activityPushing.then(run, run) : run();
+  }
+  async function reconcileActivity() {
+    if (session !== "khawla" || !firebaseConfigured()) return;
+    const run = async () => {
+      try {
+        const remote = await fetchActivityRemote();
+        if (session !== "khawla") return;
+        saveActivity(L.mergeActivity(loadActivity(), remote, Date.now()));
+        activityReadyToPush = true;
+        await writeActivityRemote(loadActivity());
+      } catch (e) {
+        console.warn(e);
+      }
+    };
+    const job = activityPushing ? activityPushing.then(run, run) : run();
+    activityPushing = job;
+    await job;
+  }
+  function stopActivityWatch() {
+    activityUnsub.forEach((fn) => { try { fn(); } catch (e) { console.warn(e); } });
+    activityUnsub = [];
+    if (activityClock) clearInterval(activityClock);
+    activityClock = null;
+  }
+  function startActivityClock() {
+    if (activityClock) clearInterval(activityClock);
+    if (session !== "farouk") { activityClock = null; return; }
+    activityClock = setInterval(() => {
+      if (session === "farouk" && $("#view-progress") && $("#view-progress").classList.contains("active")) renderActivity();
+    }, 30000);
+  }
+  async function watchKhawlaActivity() {
+    stopActivityWatch();
+    startActivityClock();
+    if (session !== "farouk" || !firebaseConfigured()) return;
+    try {
+      await signInRole("farouk");
+      if (session !== "farouk" || !fbDb) return;
+      const base = fbDb.collection("users").doc("khawla").collection("meta");
+      const onErr = (e) => {
+        console.warn(e);
+        activityListenError = friendlySync(e);
+        renderActivity();
+      };
+      const absorb = (partial) => {
+        if (session !== "farouk") return;
+        saveActivity(L.mergeActivity(loadActivity(), partial, Date.now()));
+        activityListenError = "";
+        renderActivity();
+      };
+      activityUnsub.push(base.doc("presence").onSnapshot((snap) => {
+        const data = snap.exists ? (snap.data() || {}) : {};
+        absorb({
+          presence: { lastSeen: Number(data.lastSeen) || 0, visible: !!data.visible },
+          updatedAt: Number(data.updatedAt) || 0,
+        });
+      }, onErr));
+      activityUnsub.push(base.doc("activity").onSnapshot((snap) => {
+        const data = snap.exists ? (snap.data() || {}) : {};
+        absorb({ days: data.days || {}, updatedAt: Number(data.updatedAt) || 0 });
+      }, onErr));
+    } catch (e) {
+      console.warn(e);
+      activityListenError = friendlySync(e);
+      renderActivity();
+    }
+  }
+  function formatActivityClock(ts) {
+    return new Intl.DateTimeFormat(uiLang === "de" ? "de-DE" : "en-GB", {
+      timeZone: L.ACTIVITY_TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+    }).format(new Date(ts));
+  }
+  function formatActivityWhen(ts, now) {
+    const same = L.activityDayKey(ts) === L.activityDayKey(now);
+    const opt = { timeZone: L.ACTIVITY_TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23" };
+    if (!same) { opt.day = "numeric"; opt.month = "short"; }
+    return new Intl.DateTimeFormat(uiLang === "de" ? "de-DE" : "en-GB", opt).format(new Date(ts));
+  }
+  function formatLastActive(ts, now) {
+    const min = Math.floor(Math.max(0, now - ts) / 60000);
+    if (min < 1) return tr("activity.just");
+    if (min === 1) return tr("activity.last", { when: tr("activity.minOne") });
+    if (min < 60) return tr("activity.last", { when: tr("activity.minAgo", { n: min }) });
+    const hr = Math.floor(min / 60);
+    if (hr === 1) return tr("activity.last", { when: tr("activity.hourOne") });
+    if (hr < 48) return tr("activity.last", { when: tr("activity.hourAgo", { n: hr }) });
+    const days = Math.floor(hr / 24);
+    if (days === 1) return tr("activity.last", { when: tr("activity.dayOne") });
+    return tr("activity.last", { when: tr("activity.dayAgo", { n: days }) });
+  }
+  function formatActiveMinutes(ms) {
+    const n = Math.round((ms || 0) / 60000);
+    if (ms > 0 && n === 0) return "<1";
+    return String(n);
+  }
+  function renderActivity() {
+    if (!isAdmin() || !$("#activityToday")) return;
+    const now = Date.now();
+    const data = loadActivity();
+    const seen = data.presence.lastSeen || 0;
+    const online = !!(seen && now - seen < L.ACTIVITY_ONLINE_MS);
+    const dot = $("#activityDot");
+    if (dot) dot.classList.toggle("on", online);
+    const text = $("#activityPresenceText");
+    if (text) text.textContent = online ? tr("activity.online") : (seen ? formatLastActive(seen, now) : tr("activity.never"));
+    const when = $("#activityWhen");
+    if (when) when.textContent = seen ? tr("activity.at", { time: formatActivityWhen(seen, now) }) : "";
+    const today = data.days[L.activityDayKey(now)] || { sessions: 0, activeMs: 0, attempts: 0, scoreSum: 0, first: 0, last: 0 };
+    const avg = today.attempts ? String(Math.round(today.scoreSum / today.attempts)) : "–";
+    const stats = $("#activityToday");
+    stats.innerHTML = "";
+    [
+      ["🌿", String(today.sessions || 0), tr("activity.sessions")],
+      ["⏱️", formatActiveMinutes(today.activeMs), tr("activity.minutes")],
+      ["🎤", String(today.attempts || 0), tr("activity.sentences")],
+      ["💯", avg, tr("activity.avg")],
+    ].forEach(([emo, n, lab]) => {
+      const d = document.createElement("div");
+      d.className = "stat";
+      d.innerHTML = `<span></span><b></b><small></small>`;
+      d.querySelector("span").textContent = emo;
+      d.querySelector("b").textContent = n;
+      d.querySelector("small").textContent = lab;
+      stats.appendChild(d);
+    });
+    const span = $("#activitySpan");
+    if (span) {
+      span.textContent = today.first
+        ? tr("activity.span", { from: formatActivityClock(today.first), to: formatActivityClock(today.last || today.first) })
+        : tr("activity.spanEmpty");
+    }
+    const recent = L.recentActivityDays(now, 14);
+    const minutes = recent.map((d) => Math.round((((data.days || {})[d.key] || {}).activeMs || 0) / 60000));
+    const max = Math.max(1, ...minutes);
+    const box = $("#activityBars");
+    box.innerHTML = "";
+    recent.forEach((d, i) => {
+      const v = minutes[i];
+      const el = document.createElement("div");
+      el.className = "day" + (i === recent.length - 1 ? " today" : "");
+      el.innerHTML = `<span></span><div class="col ${v ? "" : "zero"}" style="height:${v ? 10 + (v / max) * 80 : 4}%"></div><span></span>`;
+      const labels = el.querySelectorAll("span");
+      labels[0].textContent = v ? String(v) : "";
+      labels[1].textContent = tr("day." + d.weekday);
+      box.appendChild(el);
+    });
+    const status = $("#activitySync");
+    if (status) {
+      if (activityListenError) status.textContent = tr("activity.err", { err: activityListenError });
+      else if (!firebaseConfigured()) status.textContent = tr("activity.offline");
+      else status.textContent = tr("activity.live");
+    }
+  }
+  async function refreshActivity() {
+    const status = $("#activitySync");
+    if (status) status.textContent = tr("toast.pulling");
+    try {
+      if (!firebaseConfigured()) { renderActivity(); return; }
+      await signInRole("farouk");
+      const remote = await fetchActivityRemote();
+      if (session !== "farouk") return;
+      saveActivity(L.mergeActivity(loadActivity(), remote, Date.now()));
+      activityListenError = "";
+      renderActivity();
+      const line = $("#activitySync");
+      if (line) line.textContent = tr("activity.refreshed");
+    } catch (e) {
+      console.warn(e);
+      activityListenError = friendlySync(e);
+      renderActivity();
+    }
   }
 
   /* ---------------- backup ---------------- */
@@ -2060,11 +2330,19 @@ function loadProgress(id) {
     renderAll();
     greet();
     showView(viewFromHash());
+    if (session === "khawla") onKhawlaVisible();
+    else startActivityClock();
     if (!hasKey()) openKeyWall("bad");
     else refreshKeyWall(false).finally(() => { if (!keyWallKind) maybeStartGuide(); });
-    syncNow().catch(() => {});
+    syncNow().finally(() => { if (session === "farouk") watchKhawlaActivity(); }).catch(() => {});
   }
   function logout() {
+    if (session === "khawla") onKhawlaHidden();
+    stopActivityHeartbeat();
+    stopActivityWatch();
+    activityReadyToPush = false;
+    activityListenError = "";
+    activityHiddenAt = 0;
     guideOpen = false;
     clearTimeout(guideTimer);
     const layer = $("#guide");
@@ -2311,9 +2589,17 @@ function loadProgress(id) {
       }
       renderKhawla();
     };
+    $("#refreshActivity").onclick = () => { refreshActivity().catch((e) => console.warn(e)); };
     $("#showGuide").onclick = () => showGuideStep(0);
     window.addEventListener("hashchange", () => { if (session && !guideOpen) showView(viewFromHash()); });
-    document.addEventListener("visibilitychange", () => { if (session) syncNow().catch(() => {}); });
+    document.addEventListener("visibilitychange", () => {
+      if (session === "khawla") {
+        if (document.visibilityState === "visible") onKhawlaVisible();
+        else onKhawlaHidden();
+      }
+      if (session) syncNow().catch(() => {});
+    });
+    window.addEventListener("pagehide", () => { if (session === "khawla") onKhawlaHidden(); });
     window.addEventListener("online", () => { if (session) syncNow().catch(() => {}); });
   }
 
@@ -2381,5 +2667,7 @@ function loadProgress(id) {
     get settings() { return settings; },
     get lang() { return uiLang; },
     get guideOn() { return guideOpen; },
+    get activity() { return loadActivity(); },
+    noteActivity: (kind, extra) => activityEvent(kind, extra),
   };
 })();

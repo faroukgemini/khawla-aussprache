@@ -252,4 +252,79 @@ assert.equal(strictRev.step, 0);
 strictRev = logic.scheduleReview(null, 86, now, strictMarks);
 assert.equal(strictRev.step, 1);
 
+assert.equal(logic.ACTIVITY_TZ, "Africa/Casablanca");
+assert.equal(logic.ACTIVITY_HEARTBEAT_MS, 60000);
+assert.equal(logic.ACTIVITY_IDLE_MS, 5 * 60 * 1000);
+assert.equal(logic.ACTIVITY_ONLINE_MS, 2 * 60 * 1000);
+assert.equal(logic.ACTIVITY_KEEP_DAYS, 60);
+const t0 = Date.UTC(2026, 9, 18, 12, 0, 0);
+assert.equal(logic.activityDayKey(Date.UTC(2026, 9, 18, 22, 30, 0)), "2026-10-18");
+assert.equal(logic.activityDayKey(Date.UTC(2026, 9, 18, 23, 30, 0)), "2026-10-19");
+assert.equal(logic.activityWeekday(t0), 0);
+assert.equal(logic.recentActivityDays(t0, 14).length, 14);
+assert.equal(logic.recentActivityDays(t0, 14).at(-1).key, logic.activityDayKey(t0));
+
+const day = logic.activityDayKey(t0);
+let act = logic.applyActivity(logic.emptyActivity(), { kind: "show", at: t0 });
+act = logic.applyActivity(act, { kind: "show", at: t0 + 1000 });
+assert.equal(act.days[day].sessions, 1);
+assert.equal(act.days[day].activeMs, 1000);
+act = logic.applyActivity(act, { kind: "hide", at: t0 + 61000 });
+assert.equal(act.presence.visible, false);
+assert.equal(act.days[day].activeMs, 61000);
+act = logic.applyActivity(act, { kind: "show", at: t0 + 61000 + 2 * 60 * 1000 });
+assert.equal(act.days[day].sessions, 1, "a return inside 5 min stays one session");
+assert.equal(act.days[day].activeMs, 61000, "hidden time is not practice");
+act = logic.applyActivity(act, { kind: "hide", at: t0 + 61000 + 2 * 60 * 1000 + 10000 });
+assert.equal(act.days[day].activeMs, 71000);
+act = logic.applyActivity(act, { kind: "show", at: t0 + 61000 + 2 * 60 * 1000 + 10000 + 5 * 60 * 1000 });
+assert.equal(act.days[day].sessions, 2);
+assert.equal(act.days[day].activeMs, 71000);
+act = logic.applyActivity(act, { kind: "attempt", at: t0 + 61000 + 2 * 60 * 1000 + 10000 + 5 * 60 * 1000 + 1000, score: 80 });
+act = logic.applyActivity(act, { kind: "attempt", at: t0 + 61000 + 2 * 60 * 1000 + 10000 + 5 * 60 * 1000 + 2000, score: 100 });
+assert.equal(act.days[day].attempts, 2);
+assert.equal(act.days[day].scoreSum, 180);
+assert.equal(act.days[day].sessions, 2);
+
+let slept = logic.applyActivity(logic.emptyActivity(), { kind: "show", at: t0 });
+slept = logic.applyActivity(slept, { kind: "tick", at: t0 + 6 * 60 * 1000 });
+assert.equal(slept.days[day].sessions, 2);
+assert.equal(slept.days[day].activeMs, 0);
+
+const late = Date.UTC(2026, 9, 18, 22, 59, 0);
+let crossed = logic.applyActivity(logic.emptyActivity(), { kind: "show", at: late });
+crossed = logic.applyActivity(crossed, { kind: "tick", at: late + 120000 });
+assert.equal(crossed.days["2026-10-18"].activeMs, 60000);
+assert.equal(crossed.days["2026-10-19"].activeMs, 60000);
+assert.equal(crossed.days["2026-10-18"].sessions, 1);
+assert.equal(crossed.days["2026-10-19"].sessions || 0, 0);
+
+const noon = Date.UTC(2026, 5, 15, 11, 0, 0);
+const oldKey = logic.activityDayKey(noon - 70 * 86400000);
+const keepKey = logic.activityDayKey(noon - 10 * 86400000);
+let pruned = logic.emptyActivity();
+pruned.days[oldKey] = { sessions: 4, activeMs: 5, attempts: 1, scoreSum: 9, first: 1, last: 2 };
+pruned.days[keepKey] = { sessions: 2, activeMs: 8, attempts: 0, scoreSum: 0, first: 1, last: 2 };
+pruned = logic.applyActivity(pruned, { kind: "show", at: noon });
+assert.equal(pruned.days[oldKey], undefined);
+assert.equal(pruned.days[keepKey].sessions, 2);
+assert.equal(pruned.days[logic.activityDayKey(noon)].sessions, 1);
+assert.ok(Object.keys(pruned.days).length <= 60);
+
+const localAct = logic.applyActivity(logic.applyActivity(logic.emptyActivity(), { kind: "show", at: t0 }), { kind: "tick", at: t0 + 60000 });
+const remoteAct = {
+  presence: { lastSeen: t0 + 5000, visible: true },
+  days: { [day]: { sessions: 1, activeMs: 1000, attempts: 3, scoreSum: 210, first: t0, last: t0 } },
+  updatedAt: t0,
+};
+const mergedAct = logic.mergeActivity(localAct, remoteAct, t0 + 60000);
+assert.equal(mergedAct.days[day].activeMs, 60000);
+assert.equal(mergedAct.days[day].attempts, 3);
+assert.equal(mergedAct.days[day].scoreSum, 210);
+assert.equal(mergedAct.presence.lastSeen, t0 + 60000);
+assert.equal(mergedAct.track.sessionOpen, true);
+const echoed = logic.mergeActivity(mergedAct, remoteAct, t0 + 60000);
+assert.equal(echoed.days[day].activeMs, 60000);
+assert.equal(echoed.days[day].attempts, 3);
+
 console.log("logic tests ok", n, "sentences", UNITS.length, "units");
