@@ -26,7 +26,7 @@
 
   function defaultSettings() {
     return {
-      key: "", region: "northeurope", voice: "de-DE-KatjaNeural", demo: null, prosody: false,
+      key: "", region: "northeurope", voice: "de-DE-KatjaNeural", prosody: false,
       firebase: { apiKey: "", authDomain: "", projectId: "", appId: "" },
       syncPassword: "",
     };
@@ -35,7 +35,7 @@
   settings.firebase = Object.assign(defaultSettings().firebase, settings.firebase || {});
   if (!settings.region) settings.region = "northeurope";
   if (!settings.voice) settings.voice = "de-DE-KatjaNeural";
-  if (settings.demo == null) settings.demo = !settings.key;
+  if ("demo" in settings) delete settings.demo;
 
   let catalog = loadRaw(LS_CATALOG, { customUnits: [] }) || { customUnits: [] };
   if (!Array.isArray(catalog.customUnits)) catalog.customUnits = [];
@@ -55,8 +55,7 @@
     const f = settings.firebase || {};
     return !!(f.apiKey && f.authDomain && f.projectId && f.appId && settings.syncPassword);
   };
-  const hasKey = () => !!(settings.key && settings.region);
-  const useDemo = () => !hasKey() || !!settings.demo;
+  const hasKey = () => !!(settings.key && String(settings.key).trim() && settings.region && String(settings.region).trim());
   const showTrans = () => !progress.showTrans || progress.showTrans.value !== false;
 
 function loadProgress(id) {
@@ -137,10 +136,11 @@ function loadProgress(id) {
   }
   function applyLang(value, userChoice) {
     uiLang = value === "de" ? "de" : "en";
-    saveRaw(LS_UILANG, { value: uiLang, at: Date.now() });
+    const stamp = { value: uiLang, at: Date.now(), explicit: !!userChoice };
+    if (userChoice) saveRaw(LS_UILANG, stamp);
     if (userChoice && !session) langChosen = true;
     if (userChoice && session) {
-      progress.uiLang = { value: uiLang, at: Date.now() };
+      progress.uiLang = stamp;
       saveProgress(session, progress);
       schedulePush();
     }
@@ -153,18 +153,22 @@ function loadProgress(id) {
   }
   function adoptLang(user) {
     if (langChosen) {
-      progress.uiLang = { value: uiLang, at: Date.now() };
+      progress.uiLang = { value: uiLang, at: Date.now(), explicit: true };
       saveProgress(user, progress);
+      saveRaw(LS_UILANG, progress.uiLang);
       return;
     }
-    const saved = progress.uiLang;
-    if (saved && saved.at && (saved.value === "en" || saved.value === "de")) uiLang = saved.value;
-    else {
-      uiLang = user === "khawla" ? "en" : "de";
-      progress.uiLang = { value: uiLang, at: Date.now() };
+    const saved = L.readUiLang(progress);
+    const device = loadRaw(LS_UILANG, null);
+    const deviceOk = !!(device && device.explicit && (device.value === "en" || device.value === "de"));
+    if (saved.explicit && deviceOk) uiLang = (device.at || 0) >= (saved.at || 0) ? device.value : saved.value;
+    else if (saved.explicit) uiLang = saved.value;
+    else if (deviceOk) {
+      uiLang = device.value;
+      progress.uiLang = { value: uiLang, at: device.at || Date.now(), explicit: true };
       saveProgress(user, progress);
-    }
-    saveRaw(LS_UILANG, { value: uiLang, at: Date.now() });
+      return;
+    } else uiLang = "en";
   }
 
   let guideTimer = 0;
@@ -250,9 +254,7 @@ function loadProgress(id) {
       if (oldS.key) settings.key = oldS.key;
       if (oldS.region) settings.region = oldS.region;
       if (oldS.voice) settings.voice = oldS.voice;
-      if (typeof oldS.demo === "boolean") settings.demo = oldS.demo;
       if (typeof oldS.prosody === "boolean") settings.prosody = oldS.prosody;
-      if (settings.demo == null) settings.demo = !settings.key;
       saveSettings();
     }
     const hasOld = oldP && ((oldP.best && Object.keys(oldP.best).length) || (oldP.attempts && oldP.attempts.length));
@@ -290,7 +292,6 @@ function loadProgress(id) {
           settings.key = String(data.az.key);
           if (data.az.region) settings.region = String(data.az.region);
           if (data.az.voice) settings.voice = String(data.az.voice);
-          settings.demo = false;
         }
         saveSettings();
       }
@@ -301,7 +302,16 @@ function loadProgress(id) {
   /* ---------------- helpers ---------------- */
   const clamp = (v, a = 0, b = 100) => Math.max(a, Math.min(b, v));
   const round = (v) => (v == null || isNaN(v) ? null : Math.round(v));
-  const band = (s) => (s >= 80 ? "good" : s >= 60 ? "ok" : "bad");
+  function marksFor(prog, userId) {
+    return L.strictnessMarks(L.effectiveStrictness(prog || progress, userId || session));
+  }
+  function passFor(prog, userId) {
+    return marksFor(prog, userId).pass;
+  }
+  function band(s, userId, prog) {
+    const m = marksFor(prog, userId);
+    return s >= m.pass ? "good" : s >= m.red ? "ok" : "bad";
+  }
   const starsFor = (s) => (s >= 90 ? 3 : s >= 75 ? 2 : s >= 60 ? 1 : 0);
   const starStr = (n) => "★".repeat(n) + "☆".repeat(3 - n);
   const dayKey = (d = new Date()) => L.dayKey(d.getTime ? d.getTime() : d);
@@ -533,7 +543,6 @@ function loadProgress(id) {
     $("#whoChip").textContent = isAdmin() ? tr("who.admin") : tr("who.learner");
     $("#streakCount").textContent = computeStreak(progress);
     $("#starCount").textContent = totalStars(progress);
-    $("#demoBadge").hidden = !useDemo();
     const due = L.dueReviews(progress, Date.now()).length;
     $("#reviewCount").textContent = String(due);
   }
@@ -558,7 +567,7 @@ function loadProgress(id) {
     else if (c.unit) label = tr("deck.unit", { level: c.level, name: `${c.unit.emoji || ""} ${unitName(c.unit)}`.trim(), i: c.i + 1, n: c.n });
     $("#deckLabel").textContent = label;
     $("#toggleTrans").textContent = showTrans() ? tr("trans.hide") : tr("trans.show");
-    const best = c.id ? L.bestScore(progress, c.id) : null;
+    const best = c.id ? L.scoreForProgress(progress, c.id) : null;
     $("#bestStars").textContent = starStr(best != null ? starsFor(best) : 0);
     $("#bestStars").title = best != null ? tr("best.score", { n: best }) : tr("best.none");
     const tips = $("#tips");
@@ -571,7 +580,7 @@ function loadProgress(id) {
       });
     }
     $("#recordBtn").disabled = !c.de;
-    const nxt = L.nextUpId(units(), progress, currentId, isAdmin(), Date.now());
+    const nxt = L.nextUpId(units(), progress, currentId, isAdmin(), Date.now(), passFor());
     const nh = L.findSentence(units(), nxt);
     $("#nextHint").textContent = mode === "review"
       ? tr("hint.review")
@@ -591,12 +600,13 @@ function loadProgress(id) {
     const grid = $("#pathGrid");
     grid.innerHTML = "";
     list.forEach((u, i) => {
-      const unlocked = isAdmin() || L.isUnlocked(i, list, progress);
+      const pass = passFor();
+      const unlocked = isAdmin() || L.isUnlocked(i, list, progress, pass);
       const avg = L.unitAverage(u, progress);
-      const done = u.sentences.filter((s) => (L.bestScore(progress, s.id) || 0) >= 80).length;
+      const done = u.sentences.filter((s) => (L.scoreForProgress(progress, s.id) || 0) >= pass).length;
       const b = document.createElement("button");
       b.type = "button";
-      b.className = "unit-node" + (unlocked ? "" : " locked") + (avg >= 80 ? " done" : "") + (progress.cursor && progress.cursor.unitId === u.id ? " current" : "");
+      b.className = "unit-node" + (unlocked ? "" : " locked") + (avg >= pass ? " done" : "") + (progress.cursor && progress.cursor.unitId === u.id ? " current" : "");
       b.innerHTML = `<span class="emoji"></span><b></b><small></small><div class="mini-track"><span></span></div>`;
       b.querySelector(".emoji").textContent = unlocked ? (u.emoji || "🌱") : "🔒";
       b.querySelector("b").textContent = unitName(u);
@@ -611,7 +621,7 @@ function loadProgress(id) {
     const list = units();
     const i = list.findIndex((u) => u.id === unitId);
     if (i < 0) return;
-    if (!isAdmin() && !L.isUnlocked(i, list, progress)) {
+    if (!isAdmin() && !L.isUnlocked(i, list, progress, passFor())) {
       toast(tr("locked"));
       return;
     }
@@ -628,7 +638,7 @@ function loadProgress(id) {
       const label = document.createElement("span");
       label.textContent = `${idx + 1}. ${s.de}`;
       const sc = document.createElement("small");
-      const best = L.bestScore(progress, s.id);
+      const best = L.scoreForProgress(progress, s.id);
       sc.textContent = best == null ? "☆☆☆" : `${starStr(starsFor(best))} ${best}`;
       btn.append(label, sc);
       btn.onclick = () => {
@@ -665,14 +675,24 @@ function loadProgress(id) {
     while (days[dayKey(d)]) { n++; d.setDate(d.getDate() - 1); }
     return n;
   }
-  const totalStars = (prog) => Object.values((prog && prog.best) || {}).reduce((a, s) => a + starsFor((s && s.score) || 0), 0);
+  function totalStars(prog) {
+    const ids = new Set(Object.keys((prog && prog.best) || {}));
+    ((prog && prog.attempts) || []).forEach((a) => { if (a && a.sentenceId) ids.add(a.sentenceId); });
+    let n = 0;
+    ids.forEach((id) => {
+      const s = L.scoreForProgress(prog, id);
+      if (s != null) n += starsFor(s);
+    });
+    return n;
+  }
 
   function renderProgress() {
     const att = progress.attempts || [];
+    const counted = L.countingAttempts(progress);
     $("#pStreak").textContent = computeStreak(progress);
     $("#pStars").textContent = totalStars(progress);
     $("#pAttempts").textContent = att.length;
-    $("#pAvg").textContent = att.length ? Math.round(att.reduce((a, x) => a + x.score, 0) / att.length) : "–";
+    $("#pAvg").textContent = counted.length ? Math.round(counted.reduce((a, x) => a + x.score, 0) / counted.length) : "–";
     const week = $("#week");
     week.innerHTML = "";
     const days = [];
@@ -691,7 +711,7 @@ function loadProgress(id) {
     const lp = $("#levelProgress");
     lp.innerHTML = "";
     units().forEach((u, i) => {
-      const unlocked = isAdmin() || L.isUnlocked(i, units(), progress);
+      const unlocked = isAdmin() || L.isUnlocked(i, units(), progress, passFor());
       const avg = Math.round(L.unitAverage(u, progress));
       const el = document.createElement("div");
       el.className = "lvl";
@@ -747,7 +767,7 @@ function loadProgress(id) {
       ["🔥", computeStreak(hers), tr("her.streak")],
       ["⭐", totalStars(hers), tr("stat.stars")],
       ["🎤", (hers.attempts || []).length, tr("stat.tries")],
-      ["💯", (hers.attempts || []).length ? Math.round(hers.attempts.reduce((a, x) => a + x.score, 0) / hers.attempts.length) : "–", tr("stat.avg")],
+      ["💯", L.countingAttempts(hers).length ? Math.round(L.countingAttempts(hers).reduce((a, x) => a + x.score, 0) / L.countingAttempts(hers).length) : "–", tr("stat.avg")],
     ];
     cells.forEach(([emo, n, lab]) => {
       const d = document.createElement("div");
@@ -785,8 +805,8 @@ function loadProgress(id) {
       const t = document.createElement("span");
       t.textContent = a.text || "";
       const s = document.createElement("span");
-      s.className = "sc " + band(a.score);
-      s.textContent = String(a.score);
+      s.className = "sc " + band(a.score, "khawla", hers);
+      s.textContent = a.score + (a.demo ? tr("recent.demo") : "");
       li.append(t, s);
       rec.appendChild(li);
     });
@@ -851,7 +871,10 @@ function loadProgress(id) {
     $("#keyInput").value = settings.key || "";
     $("#regionInput").value = settings.region || "";
     $("#voiceSelect").value = settings.voice;
-    $("#demoToggle").checked = !!settings.demo;
+    const strictSel = $("#strictnessSelect");
+    if (strictSel) strictSel.value = L.effectiveStrictness(loadProgress("khawla"), "khawla");
+    const strictHelp = $("#strictnessHelp");
+    if (strictHelp) strictHelp.textContent = tr("strictness.help");
     $("#prosodyToggle").checked = !!settings.prosody;
     const f = settings.firebase || {};
     $("#fbApiKey").value = f.apiKey || "";
@@ -931,12 +954,12 @@ function loadProgress(id) {
       mode = "path";
       queue = [];
     }
-    const id = L.nextUpId(units(), progress, mode === "free" ? null : currentId, isAdmin(), Date.now());
+    const id = L.nextUpId(units(), progress, mode === "free" ? null : currentId, isAdmin(), Date.now(), passFor());
     if (!id || id === currentId) { toast(tr("toast.upToDate")); return; }
     const list = units();
     const idx = list.findIndex((u) => (u.sentences || []).some((s) => s.id === id));
-    if (idx >= 0 && !isAdmin() && !L.isUnlocked(idx, list, progress)) {
-      toast(tr("toast.nextLocked"));
+    if (idx >= 0 && !isAdmin() && !L.isUnlocked(idx, list, progress, passFor())) {
+      toast(tr("toast.nextLocked", { n: passFor() }));
       return;
     }
     mode = "path";
@@ -951,7 +974,7 @@ function loadProgress(id) {
     if (progress.attempts.length > L.ATTEMPT_CAP) progress.attempts = progress.attempts.slice(-L.ATTEMPT_CAP);
     const prevScore = L.bestScore(progress, c.id);
     if (prevScore == null || score > prevScore) progress.best[c.id] = { score, at: now };
-    progress.reviews[c.id] = L.scheduleReview(progress.reviews[c.id], score, now);
+    progress.reviews[c.id] = L.scheduleReview(progress.reviews[c.id], score, now, marksFor());
     progress.updatedAt = now;
     progress.cursor = { sentenceId: c.id, unitId: c.unit ? c.unit.id : null, at: now };
     saveProgress(session, progress);
@@ -1017,7 +1040,7 @@ function loadProgress(id) {
     if (btn) btn.disabled = true;
     try {
       if (currentAudio) { currentAudio.pause(); currentAudio = null; }
-      if (!useDemo() && hasKey()) {
+      if (hasKey()) {
         try {
           const url = await azureTts(text, slow);
           currentAudio = new Audio(url);
@@ -1055,6 +1078,7 @@ function loadProgress(id) {
   let pushStream = null;
   let pendingPcm = [];
   let holdSentence = null;
+  let peakRms = 0;
   let azureReady = Promise.resolve();
   const HOLD_TAP_MS = 400;
   const HOLD_TAIL_MS = 300;
@@ -1079,12 +1103,35 @@ function loadProgress(id) {
     if ($("#recTimer")) $("#recTimer").textContent = fmtHold(Date.now() - start);
   }
   function setLevel(float32) {
-    const fill = $("#recLevelFill");
-    if (!fill || !float32 || !float32.length) return;
+    if (!float32 || !float32.length) return;
     let sum = 0;
     for (let i = 0; i < float32.length; i++) sum += float32[i] * float32[i];
     const rms = Math.sqrt(sum / float32.length);
-    fill.style.width = Math.max(4, Math.min(100, Math.round(rms * 340))) + "%";
+    if (rms > peakRms) peakRms = rms;
+    const fill = $("#recLevelFill");
+    if (fill) fill.style.width = Math.max(4, Math.min(100, Math.round(rms * 340))) + "%";
+  }
+  function showSetupNeeded() {
+    setState("idle", tr("status.tap"), "");
+    const hint = $("#hint");
+    if (!hint) return;
+    if (isAdmin()) {
+      hint.textContent = "";
+      hint.append(document.createTextNode(tr("err.noKeyAdmin") + " "));
+      const link = document.createElement("button");
+      link.type = "button";
+      link.className = "text-link";
+      link.textContent = tr("err.noKeyLink");
+      link.onclick = () => {
+        showView("settings");
+        const input = $("#keyInput");
+        if (input) input.focus();
+      };
+      hint.append(link);
+    } else hint.textContent = tr("err.noKeyLearner");
+  }
+  function showSilence() {
+    setState("idle", tr("status.tap"), tr("err.heardNothing"));
   }
   function downsample(buffer, fromRate, toRate) {
     if (!buffer || fromRate === toRate) return buffer;
@@ -1144,8 +1191,7 @@ function loadProgress(id) {
     if (id !== holdId || audioFlowing) return;
     audioFlowing = true;
     heardAt = Date.now();
-    const demo = useDemo();
-    setState("listening", demo ? tr("status.listenDemo") : tr("status.listen"), demo ? (hasKey() ? tr("hint.listenDemoKey") : tr("hint.listenDemo")) : tr("hint.speakNow"));
+    setState("listening", tr("status.listen"), tr("hint.speakNow"));
     tickHold();
     clearInterval(tickTimer);
     tickTimer = setInterval(tickHold, 200);
@@ -1156,6 +1202,10 @@ function loadProgress(id) {
   }
   function beginHold(pointerId) {
     if ($("#app").hidden || guideOpen || state === "thinking" || holding) return;
+    if (!hasKey()) { showSetupNeeded(); return; }
+    if (typeof pointerId === "number") {
+      try { $("#recordBtn").setPointerCapture(pointerId); } catch {}
+    }
     const c = current();
     if (!c.de || !c.id) { toast(tr("toast.pick")); return; }
     const id = ++holdId;
@@ -1167,6 +1217,7 @@ function loadProgress(id) {
     pressAt = Date.now();
     holdSentence = c;
     pendingPcm = [];
+    peakRms = 0;
     azureReady = Promise.resolve();
     if (currentAudio) { currentAudio.pause(); currentAudio = null; }
     if ("speechSynthesis" in window) speechSynthesis.cancel();
@@ -1184,13 +1235,10 @@ function loadProgress(id) {
       if (id !== holdId) { stream.getTracks().forEach((t) => t.stop()); return; }
       micStream = stream;
       wireMeter(id, stream);
-      if (!useDemo()) {
-        azureReady = startAzure(id, c.de);
-        return azureReady;
-      }
+      azureReady = startAzure(id, c.de);
+      return azureReady;
     }).catch((e) => {
       if (id !== holdId) return;
-      if (useDemo()) { markFlowing(id); return; }
       console.warn(e);
       abortHold();
       setState("idle", tr("status.oh"), friendlyError(e));
@@ -1209,14 +1257,12 @@ function loadProgress(id) {
         const data = ev.inputBuffer.getChannelData(0);
         setLevel(data);
         markFlowing(id);
-        if (!useDemo()) {
-          const down = downsample(data, ev.inputBuffer.sampleRate || micCtx.sampleRate || 48000, 16000);
-          if (down && down.length) {
-            const pcm = floatTo16(down);
-            const copy = pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength);
-            if (pushStream) pushStream.write(copy);
-            else if (pendingPcm.length < 400) pendingPcm.push(copy);
-          }
+        const down = downsample(data, ev.inputBuffer.sampleRate || micCtx.sampleRate || 48000, 16000);
+        if (down && down.length) {
+          const pcm = floatTo16(down);
+          const copy = pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength);
+          if (pushStream) pushStream.write(copy);
+          else if (pendingPcm.length < 400) pendingPcm.push(copy);
         }
       };
       micSource.connect(micNode);
@@ -1244,28 +1290,39 @@ function loadProgress(id) {
     const c = holdSentence || current();
     wantStop = false;
     holding = false;
-    setState("thinking", tr("status.scoring"), tr("hint.moment"));
     resetHoldTimers();
-    const demo = useDemo();
+    if (!hasKey()) {
+      showSetupNeeded();
+      audioFlowing = false;
+      stopMicGraph();
+      return;
+    }
+    if (peakRms < L.SPEECH_RMS) {
+      showSilence();
+      audioFlowing = false;
+      stopMicGraph();
+      return;
+    }
+    setState("thinking", tr("status.scoring"), tr("hint.moment"));
     try {
-      if (!demo) await azureReady;
+      await azureReady;
       if (id !== holdId) return;
       const rec = activeRecognizer;
       if (micNode) { micNode.onaudioprocess = null; try { micNode.disconnect(); } catch {} micNode = null; }
       if (pushStream) { try { pushStream.close(); } catch {} pushStream = null; }
-      let result;
-      if (demo) {
-        if (rec) { try { rec.close(); } catch {} if (activeRecognizer === rec) activeRecognizer = null; }
-        result = simulate(c.de);
-      } else {
-        result = await collectAzure(id, rec);
-        if (id !== holdId || !result) return;
-      }
-      if (id !== holdId) return;
+      const result = await collectAzure(id, rec);
+      if (id !== holdId || !result) return;
+      if (L.noSpeech(result)) { showSilence(); return; }
+      const scored = L.finalScore(result, L.effectiveStrictness(progress, session));
+      if (!scored) { showSilence(); return; }
+      result.scores = Object.assign({}, result.scores, scored);
+      result.demo = false;
       setState("idle", tr("status.tap"), tr("status.again"));
       showResult(c, result);
     } catch (e) {
       if (id !== holdId) return;
+      const msg = String((e && e.message) || e);
+      if (/NoMatch|heard nothing|nichts gehört/i.test(msg)) { showSilence(); return; }
       console.warn(e);
       setState("idle", tr("status.oh"), friendlyError(e));
     } finally {
@@ -1280,7 +1337,6 @@ function loadProgress(id) {
     const down = (e) => {
       if (e.button != null && e.button !== 0) return;
       if (e.cancelable) e.preventDefault();
-      try { btn.setPointerCapture(e.pointerId); } catch {}
       beginHold(e.pointerId);
     };
     const up = (e) => {
@@ -1313,8 +1369,9 @@ function loadProgress(id) {
     if (/secure|https/i.test(m)) return tr("err.https");
     if (/NotAllowed|Permission|denied/i.test(m)) return tr("err.micDenied");
     if (/NotFound|no.*device|mic-none/i.test(m)) return tr("err.micNone");
+    if (/429|quota|Too Many Requests/i.test(m)) return tr("err.quota");
     if (/1006|Unable to contact server|ConnectionFailure/i.test(m)) return tr("err.azureNet");
-    if (/401|403|unauthori|forbidden|authentication/i.test(m)) return tr("err.azureAuth");
+    if (/401|403|unauthori|forbidden|authentication|invalid subscription/i.test(m)) return tr("err.azureAuth");
     if (/nichts gehört|NoMatch|heard nothing/i.test(m)) return tr("err.heardNothing");
     return m.length < 160 ? m : tr("err.generic");
   }
@@ -1353,7 +1410,7 @@ function loadProgress(id) {
       .filter(Boolean)
       .forEach((key) => { try { cfg.setProperty(key, silence); } catch {} });
     const audio = sdk.AudioConfig.fromStreamInput(pushStream);
-    const pa = new sdk.PronunciationAssessmentConfig(referenceText, sdk.PronunciationAssessmentGradingSystem.HundredMark, sdk.PronunciationAssessmentGranularity.Phoneme, false);
+    const pa = new sdk.PronunciationAssessmentConfig(referenceText, sdk.PronunciationAssessmentGradingSystem.HundredMark, sdk.PronunciationAssessmentGranularity.Phoneme, true);
     pa.phonemeAlphabet = "IPA";
     if (settings.prosody) pa.enableProsodyAssessment = true;
     const rec = new sdk.SpeechRecognizer(cfg, audio);
@@ -1384,7 +1441,7 @@ function loadProgress(id) {
     if (rec._error) throw rec._error;
     const reference = (holdSentence && holdSentence.de) || "";
     const merged = L.mergeUtterance(reference, rec._segments || []);
-    if (!merged.heard && merged.words.every((w) => w.error === "Omission")) throw new Error("NoMatch");
+    if (L.noSpeech(merged)) throw new Error("NoMatch");
     return { demo: false, heard: merged.heard, scores: merged.scores, words: merged.words };
   }
 
@@ -1427,25 +1484,6 @@ function loadProgress(id) {
     }
     return out;
   }
-  const tricky = (w) => (/[äöüß]|ch|r|eu|äu|z/i.test(w) ? 1 : 0) + (w.length > 9 ? 1 : 0);
-  function simulate(text) {
-    const tokens = text.split(/\s+/).map((t) => t.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "")).filter(Boolean);
-    const base = 72 + Math.random() * 22;
-    const words = tokens.map((t, idx) => {
-      if (tokens.length > 5 && idx > 0 && Math.random() < 0.05) return { word: t, score: 0, error: "Omission", phonemes: [] };
-      const s = clamp(Math.round(base + (Math.random() * 24 - 14) - tricky(t) * (6 + Math.random() * 12)), 25, 100);
-      const phonemes = g2p(t).map((p) => ({ p, score: clamp(Math.round(s + (Math.random() * 30 - 16)), 10, 100) }));
-      return { word: t, score: s, error: s < 60 ? "Mispronunciation" : "None", phonemes };
-    });
-    const spoken = words.filter((w) => w.error !== "Omission");
-    const accuracy = Math.round(spoken.reduce((a, w) => a + w.score, 0) / Math.max(1, spoken.length));
-    const completeness = Math.round((spoken.length / Math.max(1, words.length)) * 100);
-    const fluency = clamp(Math.round(base + Math.random() * 14 - 4), 40, 100);
-    const prosody = clamp(Math.round(base + Math.random() * 12 - 8), 40, 100);
-    const pron = Math.round(accuracy * 0.4 + fluency * 0.2 + completeness * 0.2 + prosody * 0.2);
-    return { demo: true, heard: spoken.map((w) => w.word).join(" "), scores: { pron, accuracy, fluency, completeness, prosody }, words };
-  }
-
   const MESSAGES = [
     [90, "msg.90a", "msg.90b"],
     [80, "msg.80a", "msg.80b"],
@@ -1459,7 +1497,8 @@ function loadProgress(id) {
     const s = res.scores;
     const pron = s.pron ?? s.accuracy ?? 0;
     const sounds = L.soundSamples(c.de, res.words, pron, window.SOUND_PATTERNS || []);
-    const { newStars, improved } = recordAttempt(c, pron, res.demo, sounds);
+    if (res.demo) return;
+    const { newStars, improved } = recordAttempt(c, pron, false, sounds);
     const st = starsFor(pron);
     $("#emptyCard").hidden = true;
     const card = $("#resultCard");
@@ -1477,7 +1516,7 @@ function loadProgress(id) {
     const other = primary === aKey ? bKey : aKey;
     const otherLang = uiLang === "en" ? "de" : "en";
     const weakest = res.words.filter((w) => w.error !== "Insertion" && w.error !== "Omission").sort((a, b) => a.score - b.score)[0];
-    $("#msgDe").textContent = tr(primary) + (improved ? " " + tr("result.record") : "") + (weakest && weakest.score < 80 ? tr("result.tip", { word: weakest.word }) : "");
+    $("#msgDe").textContent = tr(primary) + (improved ? " " + tr("result.record") : "") + (weakest && weakest.score < passFor() ? tr("result.tip", { word: weakest.word }) : "");
     $("#msgEn").textContent = trIn(otherLang, other);
     const bars = $("#bars");
     bars.innerHTML = "";
@@ -1666,6 +1705,7 @@ function loadProgress(id) {
       showTrans: prog.showTrans || { value: true, at: 0 },
       pet: L.readPet(prog),
       uiLang: L.readUiLang(prog),
+      strictness: L.readStrictness(prog),
       guide: L.readGuide(prog),
       clearedAt: prog.clearedAt || 0,
       updatedAt: Date.now(),
@@ -1783,7 +1823,6 @@ function loadProgress(id) {
       if (s.key) settings.key = s.key;
       if (s.region) settings.region = s.region;
       if (s.voice) settings.voice = s.voice;
-      if (typeof s.demo === "boolean") settings.demo = s.demo;
       if (typeof s.prosody === "boolean") settings.prosody = s.prosody;
       if (s.firebase) settings.firebase = Object.assign(settings.firebase, s.firebase);
       if (s.syncPassword) settings.syncPassword = s.syncPassword;
@@ -1791,7 +1830,7 @@ function loadProgress(id) {
       fbReady = null; fbDb = null; fbAuth = null;
     }
     progress = loadProgress(session);
-    currentId = (progress.cursor && progress.cursor.sentenceId) || L.resumeId(units(), progress);
+    currentId = (progress.cursor && progress.cursor.sentenceId) || L.resumeId(units(), progress, passFor());
     renderAll();
     schedulePush();
     if (isAdmin()) pushCatalog().catch(() => {});
@@ -1809,7 +1848,7 @@ function loadProgress(id) {
       progress = empty;
       mode = "path";
       queue = [];
-      currentId = L.resumeId(units(), progress);
+      currentId = L.resumeId(units(), progress, passFor());
       renderAll();
     } else renderKhawla();
     if (firebaseConfigured()) {
@@ -1821,7 +1860,6 @@ function loadProgress(id) {
     settings.key = $("#keyInput").value.trim();
     settings.region = $("#regionInput").value.trim().toLowerCase() || "northeurope";
     settings.voice = $("#voiceSelect").value;
-    settings.demo = $("#demoToggle").checked;
     settings.prosody = $("#prosodyToggle").checked;
     saveSettings();
     ttsCache.clear();
@@ -1929,7 +1967,7 @@ function loadProgress(id) {
     $("#app").hidden = false;
     mode = "path";
     queue = [];
-    currentId = L.resumeId(units(), progress);
+    currentId = L.resumeId(units(), progress, passFor());
     bindApp();
     renderAll();
     greet();
@@ -1957,11 +1995,8 @@ function loadProgress(id) {
     $("#nameError").textContent = "";
     if (n === "khawla" || n === "farouk") {
       if (!langChosen) {
-        const saved = loadProgress(n).uiLang;
-        uiLang = saved && saved.at && (saved.value === "en" || saved.value === "de")
-          ? saved.value
-          : (n === "khawla" ? "en" : "de");
-        saveRaw(LS_UILANG, { value: uiLang, at: Date.now() });
+        const saved = L.readUiLang(loadProgress(n));
+        uiLang = saved.explicit ? saved.value : "en";
         paintI18n();
       }
     }
@@ -2067,10 +2102,22 @@ function loadProgress(id) {
     };
     $("#saveSettings").onclick = () => {
       readAdminForm();
-      $("#settingsStatus").textContent = !settings.demo && !hasKey() ? tr("toast.savedDemo") : tr("toast.saved");
+      $("#settingsStatus").textContent = hasKey() ? tr("toast.saved") : tr("toast.savedNoKey");
       renderHeader();
     };
-    $("#demoToggle").onchange = () => { if (isAdmin()) { readAdminForm(); renderHeader(); } };
+    const strictSel = $("#strictnessSelect");
+    if (strictSel) strictSel.onchange = () => {
+      const value = strictSel.value === "gentle" || strictSel.value === "normal" ? strictSel.value : "strict";
+      const hers = loadProgress("khawla");
+      hers.strictness = { value, at: Date.now() };
+      hers.updatedAt = Date.now();
+      saveProgress("khawla", hers);
+      if (session === "khawla") progress = hers;
+      const help = $("#strictnessHelp");
+      if (help) help.textContent = tr("strictness.help");
+      if (firebaseConfigured()) syncUser("khawla", false).catch((e) => toast(friendlySync(e)));
+      else toast(tr("toast.strictness"));
+    };
     $("#testConn").onclick = async () => {
       readAdminForm();
       const st = $("#settingsStatus");
@@ -2193,7 +2240,7 @@ function loadProgress(id) {
     migrate();
     consumeSetup();
     const deviceLang = loadRaw(LS_UILANG, null);
-    if (deviceLang && (deviceLang.value === "en" || deviceLang.value === "de")) uiLang = deviceLang.value;
+    if (deviceLang && deviceLang.explicit && (deviceLang.value === "en" || deviceLang.value === "de")) uiLang = deviceLang.value;
     paintI18n();
     document.addEventListener("click", (e) => {
       const b = e.target.closest && e.target.closest(".lang-switch button");
@@ -2217,8 +2264,8 @@ function loadProgress(id) {
   }
   init();
 
-  window.__khawla = {
-    simulate, g2p, moveNo, nearNo,
+    window.__khawla = {
+    g2p, moveNo, nearNo,
     cheer: capyCheer,
     get petState() { return { count: pet.count, mute: pet.mute }; },
     get units() { return units(); },

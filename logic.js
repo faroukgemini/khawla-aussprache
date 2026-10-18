@@ -54,8 +54,16 @@
 
   function readUiLang(src) {
     const v = src && src.uiLang;
-    const value = v && (v.value === "en" || v.value === "de") ? v.value : "";
-    return { value, at: Math.max(0, Number(v && v.at) || 0) };
+    const raw = v && (v.value === "en" || v.value === "de") ? v.value : "";
+    // Only a tap on the DE/EN switch counts. An old automatic default has no explicit flag.
+    if (!v || !v.explicit || !raw) return { value: "", at: 0, explicit: false };
+    return { value: raw, at: Math.max(0, Number(v.at) || 0), explicit: true };
+  }
+
+  function readStrictness(src) {
+    const s = src && src.strictness;
+    const value = s && (s.value === "gentle" || s.value === "normal" || s.value === "strict") ? s.value : "";
+    return { value, at: Math.max(0, Number(s && s.at) || 0) };
   }
 
   function readGuide(src) {
@@ -73,6 +81,17 @@
   function mergeUiLang(local, remote, clearedAt) {
     let a = readUiLang(local);
     let b = readUiLang(remote);
+    if (clearedAt) {
+      if (a.at <= clearedAt) a = { value: "", at: 0 };
+      if (b.at <= clearedAt) b = { value: "", at: 0 };
+    }
+    const win = laterOf(a, b);
+    return { value: win.value || "", at: win.at || 0, explicit: !!win.explicit };
+  }
+
+  function mergeStrictness(local, remote, clearedAt) {
+    let a = readStrictness(local);
+    let b = readStrictness(remote);
     if (clearedAt) {
       if (a.at <= clearedAt) a = { value: "", at: 0 };
       if (b.at <= clearedAt) b = { value: "", at: 0 };
@@ -102,7 +121,8 @@
       cursor: null,
       showTrans: { value: true, at: 0 },
       pet: emptyPet(),
-      uiLang: { value: "", at: 0 },
+      uiLang: { value: "", at: 0, explicit: false },
+      strictness: { value: "", at: 0 },
       guide: { done: false, at: 0, seenVersion: 0 },
       updatedAt: 0,
     };
@@ -206,6 +226,7 @@ function mergeProgress(local, remote) {
       clearedAt,
       pet: mergePet(A, B, clearedAt),
       uiLang: mergeUiLang(A, B, clearedAt),
+      strictness: mergeStrictness(A, B, clearedAt),
       guide: mergeGuide(A, B, clearedAt),
       updatedAt: Math.max(A.updatedAt || 0, B.updatedAt || 0),
     };
@@ -221,33 +242,58 @@ function mergeProgress(local, remote) {
       showTrans: x.showTrans || { value: true, at: 0 },
       pet: readPet(x),
       uiLang: readUiLang(x),
+      strictness: readStrictness(x),
       guide: readGuide(x),
       clearedAt: x.clearedAt || 0,
     });
   }
 
+  function scoreForProgress(progress, id) {
+    const attempts = ((progress && progress.attempts) || []).filter((a) => a && a.sentenceId === id && typeof a.score === "number");
+    const real = attempts.filter((a) => a.demo !== true);
+    const demos = attempts.filter((a) => a.demo === true);
+    const saved = progress && progress.best && progress.best[id];
+    const savedScore = saved && typeof saved.score === "number" ? saved.score : null;
+    const savedAt = saved && saved.at;
+    const ownedByDemo = savedScore != null && demos.some((a) => (savedAt != null && a.at === savedAt) || (a.score === savedScore && (savedAt == null || a.at === savedAt)));
+    if (real.length) {
+      const realBest = real.reduce((m, a) => Math.max(m, a.score), 0);
+      if (savedScore != null && savedScore > realBest && !ownedByDemo) return savedScore;
+      return realBest;
+    }
+    if (demos.length) return ownedByDemo || savedScore == null ? null : savedScore;
+    return savedScore;
+  }
+
+  function countingAttempts(progress) {
+    return ((progress && progress.attempts) || []).filter((a) => a && a.demo !== true && typeof a.score === "number");
+  }
+
   function unitAverage(unit, progress) {
     const list = (unit && unit.sentences) || [];
     if (!list.length) return 0;
-    const sum = list.reduce((a, s) => a + (((progress.best || {})[s.id] && progress.best[s.id].score) || 0), 0);
+    const sum = list.reduce((a, s) => a + (scoreForProgress(progress, s.id) || 0), 0);
     return sum / list.length;
   }
 
-  function isUnlocked(index, units, progress) {
+  function isUnlocked(index, units, progress, passScore) {
     if (index <= 0) return true;
     const prev = units[index - 1];
     if (!prev) return true;
-    return unitAverage(prev, progress) >= UNLOCK_AVG;
+    return unitAverage(prev, progress) >= (passScore || UNLOCK_AVG);
   }
 
-  function scheduleReview(prev, score, now) {
+  function scheduleReview(prev, score, now, marks) {
     const step0 = prev && Number.isFinite(prev.step) ? prev.step : 0;
+    const pass = (marks && marks.pass) || 80;
+    const master = (marks && marks.master) || 90;
+    const retry = (marks && marks.red) || 60;
     let step = step0;
     let days;
-    if (score >= 80) {
+    if (score >= pass) {
       days = REVIEW_STEPS[Math.min(step0, REVIEW_STEPS.length - 1)];
       step = Math.min(REVIEW_STEPS.length - 1, step0 + 1);
-    } else if (score >= 60) {
+    } else if (score >= retry) {
       days = 1;
       step = step0;
     } else {
@@ -259,7 +305,7 @@ function mergeProgress(local, remote) {
       due: addDays(now, days),
       last: now,
       lastScore: score,
-      mastered: step >= MASTER_STEP && score >= 90,
+      mastered: step >= MASTER_STEP && score >= master,
     };
   }
 
@@ -279,38 +325,86 @@ function mergeProgress(local, remote) {
     return null;
   }
 
-  function flatUnlocked(units, progress, admin) {
+  function flatUnlocked(units, progress, admin, passScore) {
     const out = [];
     (units || []).forEach((u, i) => {
-      if (admin || isUnlocked(i, units, progress)) {
+      if (admin || isUnlocked(i, units, progress, passScore)) {
         (u.sentences || []).forEach((s) => out.push({ ...s, unitId: u.id, level: u.level }));
       }
     });
     return out;
   }
 
-  function resumeId(units, progress) {
+  function resumeId(units, progress, passScore) {
+    const need = passScore || UNLOCK_AVG;
     const cur = progress && progress.cursor && progress.cursor.sentenceId;
     if (cur && findSentence(units, cur)) return cur;
     for (let i = 0; i < (units || []).length; i++) {
-      if (!isUnlocked(i, units, progress)) break;
-      const s = units[i].sentences.find((x) => (((progress.best || {})[x.id] || {}).score || 0) < 80);
+      if (!isUnlocked(i, units, progress, need)) break;
+      const s = units[i].sentences.find((x) => (((progress.best || {})[x.id] || {}).score || 0) < need);
       if (s) return s.id;
     }
     return units && units[0] && units[0].sentences[0] ? units[0].sentences[0].id : null;
   }
 
-  function nextUpId(units, progress, currentId, admin, now) {
-    const flat = flatUnlocked(units, progress, admin);
+  function nextUpId(units, progress, currentId, admin, now, passScore) {
+    const need = passScore || UNLOCK_AVG;
+    const flat = flatUnlocked(units, progress, admin, need);
     if (!flat.length) return currentId || null;
     const start = Math.max(0, flat.findIndex((s) => s.id === currentId) + (currentId ? 1 : 0));
     const order = flat.slice(start).concat(flat.slice(0, start));
-    const need = order.find((s) => s.id !== currentId && (((progress.best || {})[s.id] || {}).score || 0) < 80);
-    if (need) return need.id;
+    const needWork = order.find((s) => s.id !== currentId && (((progress.best || {})[s.id] || {}).score || 0) < need);
+    if (needWork) return needWork.id;
     const due = dueReviews(progress, now || Date.now()).find((r) => findSentence(units, r.sentenceId));
     if (due && due.sentenceId !== currentId) return due.sentenceId;
     const seq = order.find((s) => s.id !== currentId);
     return seq ? seq.id : currentId;
+  }
+
+  const SPEECH_RMS = 0.02;
+
+  function strictnessMarks(level) {
+    if (level === "gentle") return { pass: 80, master: 90, red: 60, unlock: 80 };
+    if (level === "normal") return { pass: 80, master: 90, red: 70, unlock: 80 };
+    return { pass: 85, master: 92, red: 75, unlock: 85 };
+  }
+
+  function effectiveStrictness(progress, userId) {
+    const saved = readStrictness(progress).value;
+    if (saved) return saved;
+    return userId === "farouk" ? "normal" : "strict";
+  }
+
+  function noSpeech(merged) {
+    const words = (merged && merged.words) || [];
+    const heard = String((merged && merged.heard) || "").trim();
+    const matched = words.filter((w) => w.error !== "Omission" && w.error !== "Insertion");
+    if (!heard && !matched.length) return true;
+    if (!matched.length) return true;
+    if (words.length && words.every((w) => w.error === "Omission" || w.error === "Insertion")) return true;
+    return false;
+  }
+
+  function finalScore(merged, level) {
+    if (noSpeech(merged)) return null;
+    const refWords = ((merged && merged.words) || []).filter((w) => w.error !== "Insertion");
+    if (!refWords.length) return null;
+    const accuracy = Math.round(refWords.reduce((a, w) => a + (Number(w.score) || 0), 0) / refWords.length);
+    const matched = refWords.filter((w) => w.error !== "Omission").length;
+    const completeness = Math.round((matched / refWords.length) * 100);
+    const flu = merged.scores && merged.scores.fluency != null ? Number(merged.scores.fluency) : accuracy;
+    let pron;
+    if (level === "gentle") {
+      pron = Math.round(accuracy * 0.5 + completeness * 0.3 + flu * 0.2);
+    } else if (level === "normal") {
+      pron = Math.round(accuracy * (completeness / 100) * 0.85 + flu * 0.15);
+    } else {
+      const raw = Math.round(accuracy * (completeness / 100) * 0.9 + flu * 0.1);
+      const weakest = Math.min(...refWords.map((w) => Number(w.score) || 0));
+      pron = Math.min(raw, weakest + 15);
+    }
+    pron = Math.max(0, Math.min(100, Math.round(pron)));
+    return { pron, accuracy, fluency: Math.round(flu), completeness, prosody: merged.scores ? merged.scores.prosody : null };
   }
 
   function countMatches(re, text) {
@@ -336,6 +430,7 @@ function mergeProgress(local, remote) {
   function weakSounds(progress, minN = 4) {
     const acc = {};
     for (const att of (progress && progress.attempts) || []) {
+      if (att && att.demo === true) continue;
       for (const sm of att.sounds || []) {
         if (!sm || sm.s == null || !sm.k) continue;
         acc[sm.k] = acc[sm.k] || { sum: 0, n: 0 };
@@ -541,5 +636,13 @@ function mergeCatalog(a, b) {
     mergeCatalog,
     mergeUtterance,
     bestScore,
+    scoreForProgress,
+    countingAttempts,
+    SPEECH_RMS,
+    strictnessMarks,
+    effectiveStrictness,
+    readStrictness,
+    noSpeech,
+    finalScore,
   };
 });

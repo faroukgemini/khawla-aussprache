@@ -143,7 +143,6 @@
           <button type="button" data-lang="de" aria-pressed="false">DE</button>
           <button type="button" data-lang="en" aria-pressed="true">EN</button>
         </div>
-        <span class="chip chip-demo" id="demoBadge" hidden data-i18n-title="chip.demo" title="Demo mode: simulated scores">DEMO</span>
       </div>
     </header>
 
@@ -344,13 +343,13 @@
 
       <section class="card only-admin">
         <h2><span data-i18n="azure.title">Azure ⚙️</span> <small data-i18n="azure.sub">Farouk only · admin</small></h2>
-        <div class="toggle-row">
-          <div>
-            <b data-i18n="demo.title">Demo mode</b>
-            <p class="muted" data-i18n="demo.help">Simulated scores, no key needed. Applies to both people on this device.</p>
-          </div>
-          <label class="switch"><input type="checkbox" id="demoToggle"><span></span></label>
-        </div>
+        <label class="label" for="strictnessSelect" data-i18n="strictness.label">Strictness for Khawla</label>
+        <select id="strictnessSelect">
+          <option value="gentle" data-i18n="strictness.gentle">Gentle</option>
+          <option value="normal" data-i18n="strictness.normal">Normal</option>
+          <option value="strict" data-i18n="strictness.strict">Strict</option>
+        </select>
+        <p class="muted" id="strictnessHelp"></p>
         <label class="label" for="keyInput" data-i18n="key.label">Azure Speech key</label>
         <div class="input-row">
           <input id="keyInput" type="password" autocomplete="off" spellcheck="false" data-i18n-placeholder="key.placeholder" placeholder="stored only on this device">

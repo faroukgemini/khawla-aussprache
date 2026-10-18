@@ -128,11 +128,12 @@ const bare = logic.mergeProgress({ best: { s: { score: 60, at: 1 } }, attempts: 
 assert.equal(bare.pet.count, 0);
 assert.equal(logic.contentKey(bare), logic.contentKey({ ...bare, pet: { count: 0, countAt: 0, mute: false, muteAt: 0 } }));
 
-const langA = { uiLang: { value: "de", at: 10 }, guide: { done: false, at: 4 }, best: { s: { score: 90, at: 3 } }, attempts: [] };
-const langB = { uiLang: { value: "en", at: 20 }, guide: { done: true, at: 30 }, best: { s: { score: 70, at: 2 } }, attempts: [] };
+const langA = { uiLang: { value: "de", at: 10, explicit: true }, guide: { done: false, at: 4 }, best: { s: { score: 90, at: 3 } }, attempts: [] };
+const langB = { uiLang: { value: "en", at: 20, explicit: true }, guide: { done: true, at: 30 }, best: { s: { score: 70, at: 2 } }, attempts: [] };
 const langM = logic.mergeProgress(langA, langB);
 assert.equal(langM.best.s.score, 90);
 assert.equal(langM.uiLang.value, "en");
+assert.equal(langM.uiLang.explicit, true);
 assert.equal(langM.guide.done, true);
 assert.equal(langM.guide.seenVersion, 1);
 const langReset = logic.mergeProgress(
@@ -194,5 +195,61 @@ const extra = logic.mergeUtterance("ich heiße", [
   ] },
 ]);
 assert.deepEqual(extra.words.map((w) => [w.word, w.error]), [["ich", "None"], ["ja", "Insertion"], ["heiße", "None"]]);
+
+const oldDefault = logic.mergeProgress({ uiLang: { value: "de", at: 50 }, best: {}, attempts: [] }, null);
+assert.equal(oldDefault.uiLang.value, "");
+assert.equal(oldDefault.uiLang.explicit, false);
+const strictPick = logic.mergeProgress(
+  { strictness: { value: "gentle", at: 10 }, best: {}, attempts: [] },
+  { strictness: { value: "strict", at: 20 }, best: {}, attempts: [] }
+);
+assert.equal(strictPick.strictness.value, "strict");
+assert.equal(logic.effectiveStrictness({}, "khawla"), "strict");
+assert.equal(logic.effectiveStrictness({}, "farouk"), "normal");
+
+const silent = logic.mergeUtterance("Hallo Welt", []);
+assert.equal(logic.noSpeech(silent), true);
+assert.equal(logic.finalScore(silent, "strict"), null);
+const half = logic.mergeUtterance("eins zwei drei vier", [
+  { heard: "eins zwei", fluency: 90, words: [
+    { word: "eins", score: 90, error: "None" },
+    { word: "zwei", score: 90, error: "None" },
+  ] },
+]);
+const gentleScore = logic.finalScore(half, "gentle");
+const strictScore = logic.finalScore(half, "strict");
+assert.equal(strictScore.accuracy, 45);
+assert.equal(strictScore.completeness, 50);
+assert.ok(strictScore.pron <= 15);
+assert.ok(strictScore.pron < gentleScore.pron);
+const weakWord = logic.mergeUtterance("a b c d", [
+  { heard: "a b c d", fluency: 90, words: [
+    { word: "a", score: 40, error: "Mispronunciation" },
+    { word: "b", score: 95, error: "None" },
+    { word: "c", score: 95, error: "None" },
+    { word: "d", score: 95, error: "None" },
+  ] },
+]);
+assert.ok(logic.finalScore(weakWord, "strict").pron <= 55);
+
+const demoOnly = logic.emptyProgress();
+demoOnly.best.s = { score: 88, at: 5 };
+demoOnly.attempts = [{ id: "d", sentenceId: "s", score: 88, at: 5, demo: true }];
+assert.equal(logic.scoreForProgress(demoOnly, "s"), null);
+assert.equal(logic.countingAttempts(demoOnly).length, 0);
+demoOnly.attempts.push({ id: "r", sentenceId: "s", score: 70, at: 9, demo: false });
+assert.equal(logic.scoreForProgress(demoOnly, "s"), 70);
+const unidentified = logic.emptyProgress();
+unidentified.best.s = { score: 91, at: 1 };
+assert.equal(logic.scoreForProgress(unidentified, "s"), 91);
+
+const strictMarks = logic.strictnessMarks("strict");
+assert.equal(strictMarks.pass, 85);
+assert.equal(strictMarks.master, 92);
+assert.equal(strictMarks.red, 75);
+let strictRev = logic.scheduleReview(null, 82, now, strictMarks);
+assert.equal(strictRev.step, 0);
+strictRev = logic.scheduleReview(null, 86, now, strictMarks);
+assert.equal(strictRev.step, 1);
 
 console.log("logic tests ok", n, "sentences", UNITS.length, "units");
