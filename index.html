@@ -216,8 +216,12 @@
                 <svg class="mic-icon"><use href="#mic"/></svg>
               </button>
             </div>
-            <p class="status" id="status" data-i18n="status.tap">Tap and speak</p>
-            <p class="hint" id="hint" data-i18n="hint.ready">Read the sentence out loud — I'm listening! 🐹</p>
+            <p class="rec-meta" id="recMeta" hidden>
+              <span id="recTimer">0:00</span>
+              <span class="level" id="recLevel" aria-hidden="true"><span id="recLevelFill"></span></span>
+            </p>
+            <p class="status" id="status" data-i18n="status.tap">Hold to speak</p>
+            <p class="hint" id="hint" data-i18n="hint.ready">Hold the microphone and read the sentence out loud. 🐹</p>
           </section>
         </section>
 

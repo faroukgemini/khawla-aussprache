@@ -430,6 +430,80 @@ function mergeCatalog(a, b) {
   return [...map.values()];
 }
 
+  function diffOps(a, b) {
+    const n = a.length;
+    const m = b.length;
+    const dp = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+    for (let i = n - 1; i >= 0; i--) {
+      for (let j = m - 1; j >= 0; j--) {
+        dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+      }
+    }
+    const ops = [];
+    let i = 0;
+    let j = 0;
+    while (i < n && j < m) {
+      if (a[i] === b[j]) { ops.push(["equal", i, j]); i++; j++; }
+      else if (dp[i + 1][j] >= dp[i][j + 1]) { ops.push(["delete", i]); i++; }
+      else { ops.push(["insert", j]); j++; }
+    }
+    while (i < n) { ops.push(["delete", i]); i++; }
+    while (j < m) { ops.push(["insert", j]); j++; }
+    return ops;
+  }
+
+  function mergeUtterance(referenceText, segments) {
+    const ref = String(referenceText || "").split(/\s+/).map((w) => w.trim()).filter((w) => norm(w));
+    const recognized = [];
+    const heardParts = [];
+    const flu = [];
+    const pros = [];
+    for (const seg of segments || []) {
+      if (!seg) continue;
+      if (seg.heard) heardParts.push(String(seg.heard).trim());
+      const words = (seg.words || []).filter((w) => w && w.error !== "Omission" && norm(w.word));
+      if (seg.fluency != null && words.length) flu.push({ v: Number(seg.fluency) || 0, w: words.length });
+      if (seg.prosody != null) pros.push(Number(seg.prosody) || 0);
+      recognized.push(...words);
+    }
+    const refNorm = ref.map(norm);
+    const recNorm = recognized.map((w) => norm(w.word));
+    const ops = diffOps(refNorm, recNorm);
+    const strip = (w) => String(w || "").replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
+    const words = ops.map((op) => {
+      if (op[0] === "equal") {
+        const src = recognized[op[2]];
+        const score = Math.max(0, Math.round(Number(src.score) || 0));
+        let error = src.error && src.error !== "None" ? src.error : "None";
+        if ((error === "None" || error === "Mispronunciation") && score < 60) error = "Mispronunciation";
+        if (error === "None" && score >= 60) error = "None";
+        return { word: strip(ref[op[1]]) || src.word, score, error, phonemes: src.phonemes || [] };
+      }
+      if (op[0] === "delete") {
+        return { word: strip(ref[op[1]]), score: 0, error: "Omission", phonemes: [] };
+      }
+      const src = recognized[op[1]];
+      return { word: src.word, score: Math.max(0, Math.round(Number(src.score) || 0)), error: "Insertion", phonemes: src.phonemes || [] };
+    });
+    const scored = words.filter((w) => w.error !== "Insertion");
+    const accuracy = scored.length ? Math.round(scored.reduce((a, w) => a + w.score, 0) / scored.length) : 0;
+    const spoken = words.filter((w) => w.error !== "Insertion" && w.error !== "Omission").length;
+    const completeness = ref.length ? Math.round((spoken / ref.length) * 100) : (recognized.length ? 100 : 0);
+    const fluency = flu.length ? Math.round(flu.reduce((a, x) => a + x.v * x.w, 0) / flu.reduce((a, x) => a + x.w, 0)) : null;
+    const prosody = pros.length ? Math.round(pros.reduce((a, v) => a + v, 0) / pros.length) : null;
+    const parts = [accuracy, fluency, completeness, prosody].filter((v) => v != null);
+    parts.sort((p, q) => p - q);
+    let pron = accuracy;
+    if (parts.length >= 4) pron = Math.round(parts[0] * 0.4 + parts[1] * 0.2 + parts[2] * 0.2 + parts[3] * 0.2);
+    else if (parts.length === 3) pron = Math.round(parts[0] * 0.6 + parts[1] * 0.2 + parts[2] * 0.2);
+    else if (parts.length === 2) pron = Math.round(parts[0] * 0.6 + parts[1] * 0.4);
+    return {
+      heard: heardParts.join(" ").replace(/\s+/g, " ").trim(),
+      words,
+      scores: { pron, accuracy, fluency, completeness, prosody },
+    };
+  }
+
   function bestScore(progress, id) {
     const b = progress && progress.best && progress.best[id];
     return b && typeof b.score === "number" ? b.score : null;
@@ -465,6 +539,7 @@ function mergeCatalog(a, b) {
     migrateLegacy,
     cursorFromLegacy,
     mergeCatalog,
+    mergeUtterance,
     bestScore,
   };
 });

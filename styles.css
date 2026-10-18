@@ -112,14 +112,19 @@ textarea{resize:vertical;font-family:var(--font-head);font-size:1.15rem}
 .record-wrap{position:relative;width:132px;height:132px;margin:0 auto}
 .record-btn{position:relative;z-index:2;width:132px;height:132px;border-radius:50%;border:0;
   background:radial-gradient(circle at 35% 30%,#ffb5cf,var(--pink-3));color:#fff;
-  box-shadow:0 12px 28px rgba(240,109,155,.45), inset 0 -6px 0 rgba(0,0,0,.08);transition:transform .15s, background .3s}
+  box-shadow:0 12px 28px rgba(240,109,155,.45), inset 0 -6px 0 rgba(0,0,0,.08);transition:transform .15s, background .3s;
+  touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-user-drag:none}
 .record-btn:active{transform:scale(.94)}
+.rec-meta{display:flex;align-items:center;justify-content:center;gap:10px;margin:10px 0 0;font-weight:800;font-variant-numeric:tabular-nums}
+.level{width:92px;height:8px;border-radius:999px;background:#f6d5e0;overflow:hidden}
+.level span{display:block;height:100%;width:0;background:#e0233a;border-radius:999px}
 .mic-icon{width:58px;height:58px}
 .rings span{position:absolute;inset:0;border-radius:50%;border:3px solid var(--pink-2);opacity:0}
 body.listening .rings span{animation:ring 1.8s ease-out infinite}
 body.listening .rings span:nth-child(2){animation-delay:.6s}
 body.listening .rings span:nth-child(3){animation-delay:1.2s}
-body.listening .record-btn{background:radial-gradient(circle at 35% 30%,#b9f0d7,var(--mint-2))}
+body.listening .record-btn{background:radial-gradient(circle at 35% 30%,#ffb4b4,#d61f35);transform:scale(1.08);animation:holdPulse .8s ease-in-out infinite}
+@keyframes holdPulse{0%,100%{transform:scale(1.06)}50%{transform:scale(1.14)}}
 body.thinking .record-btn{background:radial-gradient(circle at 35% 30%,#e0d7ff,var(--lav-2));animation:wobble 1s ease-in-out infinite}
 @keyframes ring{from{transform:scale(1);opacity:.8}to{transform:scale(1.7);opacity:0}}
 @keyframes wobble{0%,100%{transform:rotate(0)}25%{transform:rotate(-6deg)}75%{transform:rotate(6deg)}}

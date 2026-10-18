@@ -960,7 +960,7 @@ function loadProgress(id) {
     return { newStars: Math.max(0, starsFor(score) - prevStars), improved: prevScore != null && score > prevScore };
   }
 
-  /* ---------------- Azure (unchanged behaviour) ---------------- */
+  /* ---------------- Azure ---------------- */
   let sdkPromise;
   function loadSdk() {
     if (window.SpeechSDK) return Promise.resolve(window.SpeechSDK);
@@ -1037,7 +1037,28 @@ function loadProgress(id) {
 
   let state = "idle";
   let activeRecognizer = null;
-  let cancelled = false;
+  let holdId = 0;
+  let holding = false;
+  let holdPointer = null;
+  let pressAt = 0;
+  let heardAt = 0;
+  let audioFlowing = false;
+  let wantStop = false;
+  let tailTimer = 0;
+  let capTimer = 0;
+  let tickTimer = 0;
+  let micStream = null;
+  let micCtx = null;
+  let micSource = null;
+  let micNode = null;
+  let micMute = null;
+  let pushStream = null;
+  let pendingPcm = [];
+  let holdSentence = null;
+  let azureReady = Promise.resolve();
+  const HOLD_TAP_MS = 400;
+  const HOLD_TAIL_MS = 300;
+  const HOLD_MAX_MS = 60000;
   function setState(s, status, hint) {
     state = s;
     document.body.classList.toggle("listening", s === "listening");
@@ -1045,41 +1066,247 @@ function loadProgress(id) {
     if (status != null) $("#status").textContent = status;
     if (hint != null) $("#hint").textContent = hint;
     $("#recordBtn").setAttribute("aria-label", s === "listening" ? tr("record.stop") : tr("record.aria"));
+    const meta = $("#recMeta");
+    if (meta) meta.hidden = s !== "listening";
     setMood(s === "listening" ? "listen" : null);
   }
-  async function onRecord() {
+  function fmtHold(ms) {
+    const s = Math.max(0, Math.floor(ms / 1000));
+    return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+  }
+  function tickHold() {
+    const start = heardAt || pressAt;
+    if ($("#recTimer")) $("#recTimer").textContent = fmtHold(Date.now() - start);
+  }
+  function setLevel(float32) {
+    const fill = $("#recLevelFill");
+    if (!fill || !float32 || !float32.length) return;
+    let sum = 0;
+    for (let i = 0; i < float32.length; i++) sum += float32[i] * float32[i];
+    const rms = Math.sqrt(sum / float32.length);
+    fill.style.width = Math.max(4, Math.min(100, Math.round(rms * 340))) + "%";
+  }
+  function downsample(buffer, fromRate, toRate) {
+    if (!buffer || fromRate === toRate) return buffer;
+    const ratio = fromRate / toRate;
+    const len = Math.max(0, Math.floor(buffer.length / ratio));
+    const out = new Float32Array(len);
+    for (let i = 0; i < len; i++) {
+      const start = Math.floor(i * ratio);
+      const end = Math.min(buffer.length, Math.floor((i + 1) * ratio));
+      let sum = 0;
+      let n = 0;
+      for (let j = start; j < end; j++) { sum += buffer[j]; n++; }
+      out[i] = n ? sum / n : 0;
+    }
+    return out;
+  }
+  function floatTo16(float32) {
+    const out = new Int16Array(float32.length);
+    for (let i = 0; i < float32.length; i++) {
+      const s = Math.max(-1, Math.min(1, float32[i]));
+      out[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+    }
+    return out;
+  }
+  function stopMicGraph() {
+    if (micNode) { try { micNode.disconnect(); } catch {} micNode.onaudioprocess = null; micNode = null; }
+    if (micSource) { try { micSource.disconnect(); } catch {} micSource = null; }
+    if (micMute) { try { micMute.disconnect(); } catch {} micMute = null; }
+    if (micStream) { micStream.getTracks().forEach((t) => t.stop()); micStream = null; }
+    if (pushStream) { try { pushStream.close(); } catch {} pushStream = null; }
+    pendingPcm = [];
+    if (activeRecognizer) {
+      const rec = activeRecognizer;
+      activeRecognizer = null;
+      try { rec.close(); } catch {}
+    }
+  }
+  function resetHoldTimers() {
+    clearTimeout(tailTimer);
+    clearTimeout(capTimer);
+    clearInterval(tickTimer);
+    tailTimer = capTimer = tickTimer = 0;
+  }
+  function abortHold(kind) {
+    holdId++;
+    holding = false;
+    wantStop = false;
+    audioFlowing = false;
+    holdPointer = null;
+    resetHoldTimers();
+    stopMicGraph();
+    if (kind === "short") setState("idle", tr("status.tap"), tr("hint.tapShort"));
+    else if (kind === "cancel") setState("idle", tr("status.cancel"), tr("hint.cancel"));
+    else setState("idle", tr("status.tap"), tr("hint.ready"));
+  }
+  function markFlowing(id) {
+    if (id !== holdId || audioFlowing) return;
+    audioFlowing = true;
+    heardAt = Date.now();
+    const demo = useDemo();
+    setState("listening", demo ? tr("status.listenDemo") : tr("status.listen"), demo ? (hasKey() ? tr("hint.listenDemoKey") : tr("hint.listenDemo")) : tr("hint.speakNow"));
+    tickHold();
+    clearInterval(tickTimer);
+    tickTimer = setInterval(tickHold, 200);
+    if (wantStop) {
+      clearTimeout(tailTimer);
+      tailTimer = setTimeout(() => finishHold(id), HOLD_TAIL_MS);
+    }
+  }
+  function beginHold(pointerId) {
+    if ($("#app").hidden || guideOpen || state === "thinking" || holding) return;
     const c = current();
     if (!c.de || !c.id) { toast(tr("toast.pick")); return; }
-    if (state === "listening") { cancelListening(); return; }
-    if (state !== "idle") return;
-    cancelled = false;
-    if (currentAudio) currentAudio.pause();
+    const id = ++holdId;
+    holding = true;
+    wantStop = false;
+    audioFlowing = false;
+    heardAt = 0;
+    holdPointer = pointerId;
+    pressAt = Date.now();
+    holdSentence = c;
+    pendingPcm = [];
+    azureReady = Promise.resolve();
+    if (currentAudio) { currentAudio.pause(); currentAudio = null; }
     if ("speechSynthesis" in window) speechSynthesis.cancel();
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (AC) {
+      if (!micCtx) micCtx = new AC();
+      if (micCtx.state === "suspended") micCtx.resume().catch(() => {});
+    }
+    clearTimeout(capTimer);
+    capTimer = setTimeout(() => finishHold(id), HOLD_MAX_MS);
+    const gum = navigator.mediaDevices && navigator.mediaDevices.getUserMedia
+      ? navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } })
+      : Promise.reject(new Error("mic-none"));
+    gum.then((stream) => {
+      if (id !== holdId) { stream.getTracks().forEach((t) => t.stop()); return; }
+      micStream = stream;
+      wireMeter(id, stream);
+      if (!useDemo()) {
+        azureReady = startAzure(id, c.de);
+        return azureReady;
+      }
+    }).catch((e) => {
+      if (id !== holdId) return;
+      if (useDemo()) { markFlowing(id); return; }
+      console.warn(e);
+      abortHold();
+      setState("idle", tr("status.oh"), friendlyError(e));
+    });
+  }
+  function wireMeter(id, stream) {
+    if (!micCtx) { markFlowing(id); return; }
     try {
+      micSource = micCtx.createMediaStreamSource(stream);
+      const size = 2048;
+      micNode = micCtx.createScriptProcessor(size, 1, 1);
+      micMute = micCtx.createGain();
+      micMute.gain.value = 0;
+      micNode.onaudioprocess = (ev) => {
+        if (id !== holdId) return;
+        const data = ev.inputBuffer.getChannelData(0);
+        setLevel(data);
+        markFlowing(id);
+        if (!useDemo()) {
+          const down = downsample(data, ev.inputBuffer.sampleRate || micCtx.sampleRate || 48000, 16000);
+          if (down && down.length) {
+            const pcm = floatTo16(down);
+            const copy = pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength);
+            if (pushStream) pushStream.write(copy);
+            else if (pendingPcm.length < 400) pendingPcm.push(copy);
+          }
+        }
+      };
+      micSource.connect(micNode);
+      micNode.connect(micMute);
+      micMute.connect(micCtx.destination);
+    } catch (e) {
+      console.warn(e);
+      markFlowing(id);
+    }
+  }
+  function endHold() {
+    if (!holding) return;
+    holding = false;
+    holdPointer = null;
+    const elapsed = Date.now() - pressAt;
+    if (!audioFlowing && elapsed < HOLD_TAP_MS) { abortHold("short"); return; }
+    wantStop = true;
+    if (audioFlowing) {
+      clearTimeout(tailTimer);
+      tailTimer = setTimeout(() => finishHold(holdId), HOLD_TAIL_MS);
+    }
+  }
+  async function finishHold(id) {
+    if (id !== holdId || state === "thinking") return;
+    const c = holdSentence || current();
+    wantStop = false;
+    holding = false;
+    setState("thinking", tr("status.scoring"), tr("hint.moment"));
+    resetHoldTimers();
+    const demo = useDemo();
+    try {
+      if (!demo) await azureReady;
+      if (id !== holdId) return;
+      const rec = activeRecognizer;
+      if (micNode) { micNode.onaudioprocess = null; try { micNode.disconnect(); } catch {} micNode = null; }
+      if (pushStream) { try { pushStream.close(); } catch {} pushStream = null; }
       let result;
-      if (useDemo()) {
-        setState("listening", tr("status.listenDemo"), hasKey() ? tr("hint.listenDemoKey") : tr("hint.listenDemo"));
-        await sleep(1400);
-        if (cancelled) return;
-        setState("thinking", tr("status.scoring"), tr("hint.moment"));
-        await sleep(500);
+      if (demo) {
+        if (rec) { try { rec.close(); } catch {} if (activeRecognizer === rec) activeRecognizer = null; }
         result = simulate(c.de);
       } else {
-        result = await assessAzure(c.de);
-        if (!result) return;
+        result = await collectAzure(id, rec);
+        if (id !== holdId || !result) return;
       }
+      if (id !== holdId) return;
       setState("idle", tr("status.tap"), tr("status.again"));
       showResult(c, result);
     } catch (e) {
-      if (cancelled) return;
+      if (id !== holdId) return;
       console.warn(e);
       setState("idle", tr("status.oh"), friendlyError(e));
+    } finally {
+      if (id === holdId) {
+        audioFlowing = false;
+        stopMicGraph();
+      }
     }
   }
-  function cancelListening() {
-    cancelled = true;
-    if (activeRecognizer) { try { activeRecognizer.close(); } catch {} activeRecognizer = null; }
-    setState("idle", tr("status.cancel"), tr("hint.cancel"));
+  function bindHold() {
+    const btn = $("#recordBtn");
+    const down = (e) => {
+      if (e.button != null && e.button !== 0) return;
+      if (e.cancelable) e.preventDefault();
+      try { btn.setPointerCapture(e.pointerId); } catch {}
+      beginHold(e.pointerId);
+    };
+    const up = (e) => {
+      if (holdPointer != null && e.pointerId !== holdPointer) return;
+      endHold();
+    };
+    btn.addEventListener("pointerdown", down);
+    btn.addEventListener("pointerup", up);
+    btn.addEventListener("pointercancel", up);
+    btn.addEventListener("pointerleave", (e) => {
+      if (holdPointer == null || e.pointerId !== holdPointer) return;
+      let captured = false;
+      try { captured = btn.hasPointerCapture(e.pointerId); } catch {}
+      if (!captured) endHold();
+    });
+    btn.addEventListener("contextmenu", (e) => e.preventDefault());
+    btn.addEventListener("selectstart", (e) => e.preventDefault());
+    document.addEventListener("keydown", (e) => {
+      if (e.code !== "Space" || e.repeat || e.altKey || e.ctrlKey || e.metaKey) return;
+      const t = e.target;
+      if (t && t.closest && t.id !== "recordBtn" && t.closest("button, a, input, textarea, select")) return;
+      if ($("#app").hidden || guideOpen) return;
+      e.preventDefault();
+      beginHold("key");
+    });
+    document.addEventListener("keyup", (e) => { if (e.code === "Space") endHold(); });
   }
   function friendlyError(e) {
     const m = String((e && e.message) || e);
@@ -1091,71 +1318,74 @@ function loadProgress(id) {
     if (/nichts gehört|NoMatch|heard nothing/i.test(m)) return tr("err.heardNothing");
     return m.length < 160 ? m : tr("err.generic");
   }
-  async function ensureMic() {
-    if (!window.isSecureContext) throw new Error("Mic needs a secure context (HTTPS)");
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("mic-none");
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    stream.getTracks().forEach((t) => t.stop());
+  function wordsFromAzureJson(json, heard) {
+    const best = (json.NBest && json.NBest[0]) || {};
+    const pa = best.PronunciationAssessment || {};
+    const words = (best.Words || []).map((w) => {
+      const wpa = w.PronunciationAssessment || {};
+      const error = wpa.ErrorType || "None";
+      const phonemes = (w.Phonemes || []).map((p) => ({ p: p.Phoneme || "", score: round(p.PronunciationAssessment ? p.PronunciationAssessment.AccuracyScore : p.AccuracyScore) }));
+      if (phonemes.length && phonemes.every((p) => !p.p)) {
+        const guess = g2p(w.Word || "");
+        if (guess.length === phonemes.length) phonemes.forEach((p, i) => (p.p = guess[i]));
+      }
+      return { word: w.Word || "", score: round(wpa.AccuracyScore ?? 0), error, phonemes };
+    });
+    return {
+      heard: heard || best.Display || "",
+      fluency: round(pa.FluencyScore),
+      prosody: round(pa.ProsodyScore),
+      words,
+    };
   }
-  async function assessAzure(referenceText) {
-    setState("thinking", tr("status.scoring"), tr("hint.prepMic"));
-    await ensureMic();
+  async function startAzure(id, referenceText) {
     const sdk = await loadSdk();
+    if (id !== holdId) return;
+    const format = sdk.AudioStreamFormat.getWaveFormatPCM(16000, 16, 1);
+    pushStream = sdk.AudioInputStream.createPushStream(format);
+    pendingPcm.forEach((buf) => { try { pushStream.write(buf); } catch {} });
+    pendingPcm = [];
     const cfg = speechConfig(sdk);
     cfg.speechRecognitionLanguage = "de-DE";
-    cfg.setProperty(sdk.PropertyId.Speech_SegmentationSilenceTimeoutMs, "1500");
     cfg.outputFormat = sdk.OutputFormat.Detailed;
-    const audio = sdk.AudioConfig.fromDefaultMicrophoneInput();
-    const pa = new sdk.PronunciationAssessmentConfig(referenceText, sdk.PronunciationAssessmentGradingSystem.HundredMark, sdk.PronunciationAssessmentGranularity.Phoneme, true);
+    const silence = "60000";
+    [sdk.PropertyId.Speech_SegmentationSilenceTimeoutMs, sdk.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, sdk.PropertyId.SpeechServiceConnection_InitialSilenceTimeoutMs]
+      .filter(Boolean)
+      .forEach((key) => { try { cfg.setProperty(key, silence); } catch {} });
+    const audio = sdk.AudioConfig.fromStreamInput(pushStream);
+    const pa = new sdk.PronunciationAssessmentConfig(referenceText, sdk.PronunciationAssessmentGradingSystem.HundredMark, sdk.PronunciationAssessmentGranularity.Phoneme, false);
     pa.phonemeAlphabet = "IPA";
     if (settings.prosody) pa.enableProsodyAssessment = true;
     const rec = new sdk.SpeechRecognizer(cfg, audio);
     pa.applyTo(rec);
-    activeRecognizer = rec;
-    setState("listening", tr("status.listen"), tr("hint.speakNow"));
-    const r = await new Promise((resolve, reject) => {
-      rec.canceled = (_, ev) => { if (ev.reason === sdk.CancellationReason.Error) reject(new Error(`${ev.errorCode}: ${ev.errorDetails}`)); };
-      rec.recognizeOnceAsync(resolve, (err) => reject(new Error(err)));
-    }).finally(() => { try { rec.close(); } catch {} if (activeRecognizer === rec) activeRecognizer = null; });
-    if (cancelled) return null;
-    setState("thinking", tr("status.scoring"), tr("hint.moment"));
-    if (r.reason === sdk.ResultReason.NoMatch) throw new Error("NoMatch");
-    if (r.reason === sdk.ResultReason.Canceled) {
-      const cd = sdk.CancellationDetails.fromResult(r);
-      throw new Error(`${cd.ErrorCode || cd.errorCode || ""} ${cd.errorDetails || tr("err.cancelled")}`);
-    }
-    const json = JSON.parse(r.properties.getProperty(sdk.PropertyId.SpeechServiceResponse_JsonResult) || "{}");
-    return parseAzure(json, referenceText, r.text);
-  }
-  function parseAzure(json, referenceText, heard) {
-    const best = (json.NBest && json.NBest[0]) || {};
-    const pa = best.PronunciationAssessment || {};
-    const refTokens = referenceText.split(/\s+/).filter(Boolean);
-    let ri = 0;
-    const words = (best.Words || []).map((w) => {
-      const wpa = w.PronunciationAssessment || {};
-      const error = wpa.ErrorType || "None";
-      let display = w.Word;
-      if (error !== "Insertion") {
-        for (let k = ri; k < Math.min(refTokens.length, ri + 3); k++) {
-          if (L.norm(refTokens[k]) === L.norm(w.Word)) { display = refTokens[k].replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ""); ri = k + 1; break; }
-        }
-      }
-      const phonemes = (w.Phonemes || []).map((p) => ({ p: p.Phoneme || "", score: round(p.PronunciationAssessment ? p.PronunciationAssessment.AccuracyScore : p.AccuracyScore) }));
-      let labels = "azure";
-      if (phonemes.length && phonemes.every((p) => !p.p)) {
-        const guess = g2p(display);
-        if (guess.length === phonemes.length) { phonemes.forEach((p, i) => (p.p = guess[i])); labels = "guess"; }
-        else { phonemes.forEach((p, i) => (p.p = "")); labels = "numbered"; }
-      }
-      return { word: display, score: round(wpa.AccuracyScore ?? 0), error, phonemes, labels };
-    });
-    return {
-      demo: false,
-      heard: heard || best.Display || "",
-      scores: { pron: round(pa.PronScore), accuracy: round(pa.AccuracyScore), fluency: round(pa.FluencyScore), completeness: round(pa.CompletenessScore), prosody: round(pa.ProsodyScore) },
-      words,
+    rec._segments = [];
+    rec._done = new Promise((resolve) => { rec._resolveDone = resolve; });
+    rec.recognized = (_, e) => {
+      if (!e.result || e.result.reason !== sdk.ResultReason.RecognizedSpeech) return;
+      let json = {};
+      try { json = JSON.parse(e.result.properties.getProperty(sdk.PropertyId.SpeechServiceResponse_JsonResult) || "{}"); } catch {}
+      rec._segments.push(wordsFromAzureJson(json, e.result.text));
     };
+    rec.canceled = (_, e) => {
+      if (e.reason === sdk.CancellationReason.Error) rec._error = new Error(`${e.errorCode || ""} ${e.errorDetails || ""}`.trim());
+    };
+    rec.sessionStopped = () => { if (rec._resolveDone) rec._resolveDone(); };
+    activeRecognizer = rec;
+    await new Promise((resolve, reject) => rec.startContinuousRecognitionAsync(resolve, (err) => reject(new Error(err))));
+  }
+  async function collectAzure(id, rec) {
+    if (!rec) throw new Error("NoMatch");
+    await new Promise((resolve, reject) => {
+      try { rec.stopContinuousRecognitionAsync(resolve, (err) => reject(new Error(err))); }
+      catch (e) { reject(e); }
+    });
+    if (id !== holdId) return null;
+    await Promise.race([rec._done || Promise.resolve(), sleep(8000)]);
+    if (rec._error) throw rec._error;
+    const reference = (holdSentence && holdSentence.de) || "";
+    const merged = L.mergeUtterance(reference, rec._segments || []);
+    if (!merged.heard && merged.words.every((w) => w.error === "Omission")) throw new Error("NoMatch");
+    return { demo: false, heard: merged.heard, scores: merged.scores, words: merged.words };
   }
 
   const G2P = [
@@ -1767,7 +1997,8 @@ function loadProgress(id) {
     };
     $("#pathClose").onclick = () => { $("#pathWrap").hidden = true; $("#pathToggle").setAttribute("aria-expanded", "false"); };
     $("#reviewJump").onclick = () => showView("review");
-    $("#againBtn").onclick = () => { hideResult(); onRecord(); };
+    $("#againBtn").onclick = () => { hideResult(); setState("idle", tr("status.tap"), tr("hint.ready")); };
+    bindHold();
     $("#playNormal").onclick = (e) => speak(current().de, false, e.currentTarget);
     $("#playSlow").onclick = (e) => speak(current().de, true, e.currentTarget);
     $("#toggleTrans").onclick = () => {
@@ -1778,7 +2009,6 @@ function loadProgress(id) {
       renderPractice();
     };
     $("#englishText").onclick = () => { if (!showTrans()) $("#englishText").classList.toggle("hide"); };
-    $("#recordBtn").onclick = onRecord;
     $("#freeToggle").onclick = () => {
       mode = mode === "free" ? "path" : "free";
       if (mode === "free") freeText = $("#customInput").value;
