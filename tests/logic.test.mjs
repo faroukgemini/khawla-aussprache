@@ -166,4 +166,33 @@ assert.equal(
   logic.contentKey({ guide: { done: true, at: 5, seenVersion: 1 }, best: {}, attempts: [] })
 );
 
+const said = logic.mergeUtterance("Hallo, ich heiße Khawla.", [
+  { heard: "Hallo ich", fluency: 80, prosody: 70, words: [
+    { word: "Hallo", score: 90, error: "None", phonemes: [{ p: "h", score: 90 }] },
+    { word: "ich", score: 88, error: "None", phonemes: [] },
+  ] },
+  { heard: "heiße Khawla", fluency: 60, words: [
+    { word: "heiße", score: 70, error: "None", phonemes: [{ p: "h", score: 70 }] },
+    { word: "Khawla", score: 95, error: "None", phonemes: [] },
+  ] },
+]);
+assert.deepEqual(said.words.map((w) => w.word), ["Hallo", "ich", "heiße", "Khawla"]);
+assert.equal(said.words.some((w) => w.error === "Omission"), false);
+assert.equal(said.heard, "Hallo ich heiße Khawla");
+assert.equal(said.scores.completeness, 100);
+assert.equal(said.scores.fluency, 70);
+const partial = logic.mergeUtterance("Hallo, ich heiße Khawla.", [
+  { heard: "Hallo", fluency: 90, words: [{ word: "Hallo", score: 92, error: "None", phonemes: [] }] },
+]);
+assert.deepEqual(partial.words.map((w) => w.error), ["None", "Omission", "Omission", "Omission"]);
+assert.equal(partial.scores.completeness, 25);
+const extra = logic.mergeUtterance("ich heiße", [
+  { heard: "ich ja heiße", fluency: 80, words: [
+    { word: "ich", score: 80, error: "None" },
+    { word: "ja", score: 50, error: "None" },
+    { word: "heiße", score: 80, error: "None" },
+  ] },
+]);
+assert.deepEqual(extra.words.map((w) => [w.word, w.error]), [["ich", "None"], ["ja", "Insertion"], ["heiße", "None"]]);
+
 console.log("logic tests ok", n, "sentences", UNITS.length, "units");
