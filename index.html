@@ -117,16 +117,15 @@
   </div>
 
   <div class="app" id="app" hidden>
-    <div class="preview-banner" id="previewBanner">
-      <span>Vorschau · Kapi streicheln ändert keinen echten Fortschritt.</span>
-      <button type="button" class="pet-mute" id="petMute" aria-pressed="false">🔊 Ton</button>
-    </div>
     <header class="topbar">
       <div class="hello">
-        <button type="button" class="mascot-mini pet-target" id="mascotMini" aria-label="Kapi streicheln">
-          <svg class="capy-svg"><use href="#capy"/></svg>
-          <span class="pet-count" id="petCount" aria-live="polite">0</span>
-        </button>
+        <div class="kapi-wrap">
+          <button type="button" class="mascot-mini pet-target" id="mascotMini" aria-label="Kapi streicheln">
+            <svg class="capy-svg"><use href="#capy"/></svg>
+            <span class="pet-count" id="petCount" aria-live="polite">0</span>
+          </button>
+          <button type="button" class="pet-mute" id="petMute" aria-pressed="false" aria-label="Kapi-Ton an" title="Kapi-Ton">🔊</button>
+        </div>
         <div>
           <h1 id="helloTitle">Hallo!</h1>
           <p class="sub" id="helloSub">Bereit für ein bisschen Deutsch?</p>

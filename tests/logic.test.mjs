@@ -101,4 +101,31 @@ assert.equal(cat[0].deleted, true);
 const resumed = logic.resumeId(UNITS, { cursor: { sentenceId: "a1-essen-03", at: 3 }, best: {} });
 assert.equal(resumed, "a1-essen-03");
 
+const petLocal = logic.emptyProgress();
+petLocal.best.s = { score: 91, at: 5 };
+petLocal.pet = { count: 4, countAt: 10, mute: false, muteAt: 8 };
+const petRemote = logic.emptyProgress();
+petRemote.best.s = { score: 70, at: 4 };
+petRemote.pet = { count: 9, countAt: 20, mute: true, muteAt: 30 };
+const petMerged = logic.mergeProgress(petLocal, petRemote);
+assert.equal(petMerged.best.s.score, 91);
+assert.equal(petMerged.pet.count, 9);
+assert.equal(petMerged.pet.mute, true);
+const petMutedEarlier = logic.mergeProgress(
+  { pet: { count: 9, countAt: 20, mute: false, muteAt: 40 } },
+  { pet: { count: 3, countAt: 12, mute: true, muteAt: 30 } }
+);
+assert.equal(petMutedEarlier.pet.count, 9);
+assert.equal(petMutedEarlier.pet.mute, false);
+const petCleared = logic.mergeProgress(
+  { clearedAt: 50, pet: { count: 0, countAt: 0, mute: false, muteAt: 0 }, best: {}, attempts: [] },
+  { pet: { count: 9, countAt: 20, mute: true, muteAt: 30 }, best: { s: { score: 80, at: 10 } }, attempts: [{ id: "old", at: 10, score: 80 }] }
+);
+assert.equal(petCleared.pet.count, 0);
+assert.equal(petCleared.pet.mute, false);
+assert.equal(petCleared.attempts.length, 0);
+const bare = logic.mergeProgress({ best: { s: { score: 60, at: 1 } }, attempts: [] }, null);
+assert.equal(bare.pet.count, 0);
+assert.equal(logic.contentKey(bare), logic.contentKey({ ...bare, pet: { count: 0, countAt: 0, mute: false, muteAt: 0 } }));
+
 console.log("logic tests ok", n, "sentences", UNITS.length, "units");

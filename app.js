@@ -4,10 +4,6 @@
   "use strict";
 
   const L = window.AusspracheLogic;
-  /* Preview branch only. Turn this off before merging to main, or the live
-     site would keep the preview storage prefix and skip sync. */
-  const PREVIEW_BUILD = true;
-  const storeKey = (k) => (PREVIEW_BUILD ? "preview." + k : k);
   const FB_VERSION = "12.4.0";
   const EMAIL = { farouk: "farouk@aussprache.app", khawla: "khawla@aussprache.app" };
   const LS_SETTINGS = "aussprache.settings.v1";
@@ -22,11 +18,11 @@
 
   const loadRaw = (k, d) => {
     try {
-      const v = JSON.parse(localStorage.getItem(storeKey(k)) || "null");
+      const v = JSON.parse(localStorage.getItem(k) || "null");
       return v == null ? d : v;
     } catch { return d; }
   };
-  const saveRaw = (k, v) => { try { localStorage.setItem(storeKey(k), JSON.stringify(v)); } catch {} };
+  const saveRaw = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 
   function defaultSettings() {
     return {
@@ -73,6 +69,7 @@ function loadProgress(id) {
     reviews: p.reviews || {},
     days: L.recomputeDays(attempts),
     showTrans: p.showTrans || { value: true, at: 0 },
+    pet: L.readPet(p),
   });
 }
   function saveProgress(id, p) {
@@ -87,8 +84,7 @@ function loadProgress(id) {
   }
 
   function migrate() {
-    if (PREVIEW_BUILD) return;
-    if (localStorage.getItem(storeKey(LS_MIGRATED))) return;
+    if (localStorage.getItem(LS_MIGRATED)) return;
     const oldS = loadRaw("khawla.settings.v1", null);
     const oldP = loadRaw("khawla.progress.v1", null);
     const oldPos = loadRaw("khawla.position.v1", null);
@@ -102,14 +98,14 @@ function loadProgress(id) {
       saveSettings();
     }
     const hasOld = oldP && ((oldP.best && Object.keys(oldP.best).length) || (oldP.attempts && oldP.attempts.length));
-    if (hasOld && !localStorage.getItem(storeKey(userKey("khawla")))) {
+    if (hasOld && !localStorage.getItem(userKey("khawla"))) {
       const prog = L.migrateLegacy(oldP, window.LEGACY || [], window.UNITS || []);
       if (oldS && typeof oldS.showTrans === "boolean") prog.showTrans = { value: oldS.showTrans, at: 1 };
       const cur = L.cursorFromLegacy(oldPos, window.LEGACY || [], window.UNITS || []);
       if (cur) prog.cursor = cur;
       saveProgress("khawla", prog);
     }
-    localStorage.setItem(storeKey(LS_MIGRATED), "1");
+    localStorage.setItem(LS_MIGRATED, "1");
   }
 
   function fromB64Url(s) {
@@ -200,19 +196,26 @@ function loadProgress(id) {
     });
   }
 
-  /* ---------------- petting (preview) ---------------- */
-  const LS_PET = "aussprache.pet.v1";
+  /* ---------------- petting ---------------- */
   const PET_SLEEPY = 18;
-  let pet = { count: 0, mute: false };
+  let pet = L.readPet(null);
   let petAudio = null;
   let lastPetAt = 0;
 
-  function loadPet() {
-    const p = loadRaw(LS_PET, null) || {};
-    pet = { count: Math.max(0, Number(p.count) || 0), mute: !!p.mute };
+  function loadPet() { pet = L.readPet(progress); }
+  function savePet() {
+    progress.pet = {
+      count: pet.count,
+      countAt: pet.countAt,
+      mute: !!pet.mute,
+      muteAt: pet.muteAt,
+    };
+    if (!session) return;
+    saveProgress(session, progress);
+    schedulePush();
   }
-  function savePet() { saveRaw(LS_PET, { count: pet.count, mute: pet.mute }); }
   function renderPet() {
+    loadPet();
     const label = (pet.count >= PET_SLEEPY ? "💤 " : "") + pet.count;
     $$(".pet-count").forEach((el) => { el.textContent = label; });
     ["#mascotMini", "#mascotBig"].forEach((s) => {
@@ -222,10 +225,10 @@ function loadProgress(id) {
     const mute = $("#petMute");
     if (mute) {
       mute.setAttribute("aria-pressed", pet.mute ? "true" : "false");
-      mute.textContent = pet.mute ? "🔇 Stumm" : "🔊 Ton";
+      mute.textContent = pet.mute ? "🔇" : "🔊";
+      mute.title = pet.mute ? "Kapi ist leise" : "Kapi macht einen Ton";
+      mute.setAttribute("aria-label", pet.mute ? "Kapi-Ton aus" : "Kapi-Ton an");
     }
-    const banner = $("#previewBanner");
-    if (banner) banner.hidden = !PREVIEW_BUILD;
   }
   function spawnHeart(host) {
     const hearts = host.querySelectorAll(".pet-heart");
@@ -269,6 +272,7 @@ function loadProgress(id) {
     const before = pet.count;
     if (count) {
       pet.count += 1;
+      pet.countAt = Date.now();
       savePet();
     }
     host.classList.remove("petting");
@@ -301,7 +305,14 @@ function loadProgress(id) {
     loadPet();
     renderPet();
     const mute = $("#petMute");
-    if (mute) mute.onclick = () => { pet.mute = !pet.mute; savePet(); renderPet(); if (!pet.mute) chirp(); };
+    if (mute) mute.onclick = (e) => {
+      e.stopPropagation();
+      pet.mute = !pet.mute;
+      pet.muteAt = Date.now();
+      savePet();
+      renderPet();
+      if (!pet.mute) chirp();
+    };
     $$(".pet-target").forEach((el) => {
       let down = false;
       let moved = false;
@@ -638,10 +649,6 @@ function loadProgress(id) {
   function renderSyncStatus() {
     const el = $("#syncStatus");
     if (!el || !session) return;
-    if (PREVIEW_BUILD) {
-      el.textContent = "Vorschau: kein Cloud-Sync. Echter Fortschritt bleibt unberührt.";
-      return;
-    }
     if (!firebaseConfigured()) {
       el.textContent = isAdmin()
         ? "Cloud-Sync ist noch nicht eingerichtet."
@@ -709,6 +716,7 @@ function loadProgress(id) {
     if ($("#view-review").classList.contains("active")) renderReview();
     if ($("#view-progress").classList.contains("active")) { renderProgress(); renderKhawla(); }
     renderSyncStatus();
+    renderPet();
   }
 
   function showView(v) {
@@ -1217,7 +1225,6 @@ function loadProgress(id) {
     await fbReady;
   }
   async function signInRole(role) {
-    if (PREVIEW_BUILD) return;
     await ensureFirebase();
     const email = EMAIL[role];
     if (fbAuth.currentUser && fbAuth.currentUser.email === email) return;
@@ -1226,13 +1233,11 @@ function loadProgress(id) {
   }
   function authRole() { return session === "farouk" ? "farouk" : "khawla"; }
   async function fetchRemote(userId) {
-    if (PREVIEW_BUILD) return null;
     await signInRole(authRole());
     const snap = await fbDb.collection("users").doc(userId).get();
     return snap.exists ? snap.data() : null;
   }
   async function writeRemote(userId, prog) {
-    if (PREVIEW_BUILD) return 0;
     await signInRole(authRole());
     const data = JSON.parse(JSON.stringify({
       schema: 2,
@@ -1241,6 +1246,7 @@ function loadProgress(id) {
       reviews: prog.reviews || {},
       cursor: prog.cursor || null,
       showTrans: prog.showTrans || { value: true, at: 0 },
+      pet: L.readPet(prog),
       clearedAt: prog.clearedAt || 0,
       updatedAt: Date.now(),
     }));
@@ -1260,7 +1266,6 @@ function loadProgress(id) {
     return m.slice(0, 180);
   }
   async function pullCatalog() {
-    if (PREVIEW_BUILD) return;
     const snap = await fbDb.collection("shared").doc("catalog").get();
     const remote = snap.exists ? (snap.data().units || []) : [];
     const merged = L.mergeCatalog(catalog.customUnits, remote);
@@ -1270,13 +1275,11 @@ function loadProgress(id) {
     if (changed && isAdmin()) await fbDb.collection("shared").doc("catalog").set({ units: merged, updatedAt: Date.now() });
   }
   async function pushCatalog() {
-    if (PREVIEW_BUILD) return;
     if (!firebaseConfigured() || !isAdmin()) return;
     await signInRole("farouk");
     await pullCatalog();
   }
   async function syncUser(userId, applyCursor) {
-    if (PREVIEW_BUILD) return;
     const remote = await fetchRemote(userId);
     const local = loadProgress(userId);
     const merged = L.mergeProgress(local, remote);
@@ -1295,7 +1298,6 @@ function loadProgress(id) {
     setSyncMeta(userId, { ok: true, at: Date.now(), remoteUpdatedAt: (remote && remote.updatedAt) || 0, error: "" });
   }
   async function syncNow() {
-    if (PREVIEW_BUILD) { renderSyncStatus(); return; }
     if (!session || !firebaseConfigured()) { renderSyncStatus(); return; }
     if (syncing) return;
     syncing = true;
@@ -1312,7 +1314,6 @@ function loadProgress(id) {
     } finally { syncing = false; }
   }
   function schedulePush() {
-    if (PREVIEW_BUILD) return;
     clearTimeout(syncTimer);
     syncTimer = setTimeout(() => { syncNow().catch(() => {}); }, 1200);
   }
@@ -1514,7 +1515,7 @@ function loadProgress(id) {
     syncNow().catch(() => {});
   }
   function logout() {
-    localStorage.removeItem(storeKey(LS_SESSION));
+    localStorage.removeItem(LS_SESSION);
     session = null;
     $("#app").hidden = true;
     document.body.removeAttribute("data-role");
@@ -1752,20 +1753,20 @@ function loadProgress(id) {
 
   function init() {
     migrate();
-    if (!PREVIEW_BUILD) consumeSetup();
+    consumeSetup();
     if ("speechSynthesis" in window) speechSynthesis.getVoices();
     bindGate();
     bindPets();
     const saved = loadRaw(LS_SESSION, null);
     if (saved && (saved.user === "khawla" || saved.user === "farouk")) enterApp(saved.user);
-    if (!PREVIEW_BUILD && "serviceWorker" in navigator && window.isSecureContext && !/[?&]nosw/.test(location.search)) {
+    if ("serviceWorker" in navigator && window.isSecureContext && !/[?&]nosw/.test(location.search)) {
       navigator.serviceWorker.register("sw.js").catch((e) => console.warn("SW", e));
     }
   }
   init();
 
   window.__khawla = {
-    simulate, g2p, moveNo, nearNo, PREVIEW_BUILD, storeKey,
+    simulate, g2p, moveNo, nearNo,
     cheer: capyCheer,
     get petState() { return { count: pet.count, mute: pet.mute }; },
     get units() { return units(); },

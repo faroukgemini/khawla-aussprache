@@ -152,8 +152,8 @@ body.thinking .record-btn{background:radial-gradient(circle at 35% 30%,#e0d7ff,v
 @keyframes wiggle{0%{transform:rotate(0)}30%{transform:rotate(-9deg) translateY(-3px)}70%{transform:rotate(8deg) translateY(-1px)}100%{transform:rotate(0)}}
 .pet-heart{position:absolute;top:6%;z-index:4;pointer-events:none;font-size:1.15rem;line-height:1;animation:petHeart .9s ease-out forwards}
 @keyframes petHeart{0%{transform:translate(-50%,0) scale(.55);opacity:1}100%{transform:translate(-50%,-46px) scale(1.15);opacity:0}}
-.preview-banner{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;background:var(--sun);border-radius:16px;padding:8px 12px;margin:0 0 12px;font-weight:800;font-size:.82rem}
-.pet-mute{border:0;background:#fff;border-radius:999px;padding:4px 12px;font-weight:800;min-height:36px;box-shadow:var(--shadow)}
+.kapi-wrap{position:relative;flex:0 0 auto}
+.pet-mute{position:absolute;top:-6px;right:-8px;z-index:2;width:28px;height:28px;min-height:28px;padding:0;border:0;border-radius:999px;background:#fff;box-shadow:var(--shadow);font-size:.8rem;line-height:1}
 .pet-mute[aria-pressed="true"]{background:#f6eef2}
 .pet-hint{margin:0;font-weight:800;color:var(--pink-3);font-size:.9rem}
 .bubble{background:var(--sun);border-radius:20px;padding:12px 14px;margin:6px 0 0;font-weight:700;position:relative}
