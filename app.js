@@ -1496,14 +1496,11 @@ function loadProgress(id) {
     const cfg = speechConfig(sdk);
     cfg.speechRecognitionLanguage = "de-DE";
     cfg.outputFormat = sdk.OutputFormat.Detailed;
-    const silence = "60000";
-    [sdk.PropertyId.Speech_SegmentationSilenceTimeoutMs, sdk.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, sdk.PropertyId.SpeechServiceConnection_InitialSilenceTimeoutMs]
-      .filter(Boolean)
-      .forEach((key) => { try { cfg.setProperty(key, silence); } catch {} });
+    // Segmentation silence must be 100–5000 ms. Push-to-talk ends on release, so the other silence timeouts stay at the service defaults.
+    cfg.setProperty(sdk.PropertyId.Speech_SegmentationSilenceTimeoutMs, "5000");
     const audio = sdk.AudioConfig.fromStreamInput(pushStream);
     const pa = new sdk.PronunciationAssessmentConfig(referenceText, sdk.PronunciationAssessmentGradingSystem.HundredMark, sdk.PronunciationAssessmentGranularity.Phoneme, true);
     pa.phonemeAlphabet = "IPA";
-    if (settings.prosody) pa.enableProsodyAssessment = true;
     const rec = new sdk.SpeechRecognizer(cfg, audio);
     pa.applyTo(rec);
     rec._segments = [];
