@@ -52,6 +52,43 @@
     };
   }
 
+  function readUiLang(src) {
+    const v = src && src.uiLang;
+    const value = v && (v.value === "en" || v.value === "de") ? v.value : "";
+    return { value, at: Math.max(0, Number(v && v.at) || 0) };
+  }
+
+  function readGuide(src) {
+    const g = src && src.guide;
+    return { done: !!(g && g.done), at: Math.max(0, Number(g && g.at) || 0) };
+  }
+
+  function laterOf(a, b) {
+    return (a.at || 0) >= (b.at || 0) ? a : b;
+  }
+
+  function mergeUiLang(local, remote, clearedAt) {
+    let a = readUiLang(local);
+    let b = readUiLang(remote);
+    if (clearedAt) {
+      if (a.at <= clearedAt) a = { value: "", at: 0 };
+      if (b.at <= clearedAt) b = { value: "", at: 0 };
+    }
+    const win = laterOf(a, b);
+    return { value: win.value || "", at: win.at || 0 };
+  }
+
+  function mergeGuide(local, remote, clearedAt) {
+    let a = readGuide(local);
+    let b = readGuide(remote);
+    if (clearedAt) {
+      if (a.at <= clearedAt) a = { done: false, at: 0 };
+      if (b.at <= clearedAt) b = { done: false, at: 0 };
+    }
+    const win = laterOf(a, b);
+    return { done: !!win.done, at: win.at || 0 };
+  }
+
   function emptyProgress() {
     return {
       schema: 2,
@@ -61,6 +98,8 @@
       cursor: null,
       showTrans: { value: true, at: 0 },
       pet: emptyPet(),
+      uiLang: { value: "", at: 0 },
+      guide: { done: false, at: 0 },
       updatedAt: 0,
     };
   }
@@ -162,6 +201,8 @@ function mergeProgress(local, remote) {
       days: recomputeDays(attempts),
       clearedAt,
       pet: mergePet(A, B, clearedAt),
+      uiLang: mergeUiLang(A, B, clearedAt),
+      guide: mergeGuide(A, B, clearedAt),
       updatedAt: Math.max(A.updatedAt || 0, B.updatedAt || 0),
     };
   }
@@ -175,6 +216,8 @@ function mergeProgress(local, remote) {
       cursor: x.cursor || null,
       showTrans: x.showTrans || { value: true, at: 0 },
       pet: readPet(x),
+      uiLang: readUiLang(x),
+      guide: readGuide(x),
       clearedAt: x.clearedAt || 0,
     });
   }
@@ -396,6 +439,8 @@ function mergeCatalog(a, b) {
     norm,
     emptyProgress,
     readPet,
+    readUiLang,
+    readGuide,
     startOfDay,
     addDays,
     dayKey,

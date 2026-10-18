@@ -79,16 +79,20 @@
 
   <div id="gate" class="gate">
     <div class="gate-card card">
+      <div class="lang-switch" role="group" data-i18n-aria="nav.lang" aria-label="Language">
+        <button type="button" data-lang="de" aria-pressed="false">DE</button>
+        <button type="button" data-lang="en" aria-pressed="true">EN</button>
+      </div>
       <div class="mascot-big" aria-hidden="true">
         <svg class="capy-svg"><use href="#capy"/></svg>
         <svg class="bee-svg"><use href="#bee"/></svg>
       </div>
-      <h1>Wer übt heute?</h1>
-      <p class="muted">Schreib deinen Namen. · Type your name.</p>
-      <label class="label" for="nameInput">Name</label>
-      <input id="nameInput" autocomplete="nickname" autocapitalize="words" placeholder="Khawla oder Farouk" />
+      <h1 data-i18n="gate.title">Who's practicing today?</h1>
+      <p class="muted" data-i18n="gate.lead">Type your name.</p>
+      <label class="label" for="nameInput" data-i18n="gate.name">Name</label>
+      <input id="nameInput" autocomplete="nickname" autocapitalize="words" data-i18n-placeholder="gate.placeholder" placeholder="Khawla or Farouk" />
       <div class="row">
-        <button class="btn btn-primary" id="nameGo" type="button">Weiter</button>
+        <button class="btn btn-primary" id="nameGo" type="button" data-i18n="gate.go">Continue</button>
       </div>
       <p class="status small" id="nameError"></p>
     </div>
@@ -97,22 +101,22 @@
   <div id="loveModal" class="gate love-layer" hidden>
     <div class="gate-card card" role="dialog" aria-modal="true" aria-labelledby="loveTitle">
       <div class="mascot-mini happy" aria-hidden="true"><svg class="capy-svg"><use href="#capy"/></svg></div>
-      <h2 id="loveTitle">Liebst du mich?</h2>
-      <p class="muted">Do you love me?</p>
-      <button class="btn btn-primary love-yes" id="loveYes" type="button">Ja, natürlich 💛</button>
+      <h2 id="loveTitle" data-i18n="love.title">Do you love me?</h2>
+      <p class="muted" data-i18n="love.sub">Just a tiny question.</p>
+      <button class="btn btn-primary love-yes" id="loveYes" type="button" data-i18n="love.yes">Yes, of course 💛</button>
       <div class="love-arena" id="loveArena">
-        <button class="btn btn-ghost love-no" id="loveNo" type="button" tabindex="-1">Nein</button>
+        <button class="btn btn-ghost love-no" id="loveNo" type="button" tabindex="-1" data-i18n="love.no">No</button>
       </div>
-      <p class="muted small">Die Nein-Taste ist schüchtern. · The No button is shy.</p>
+      <p class="muted small" data-i18n="love.hint">The No button is shy.</p>
     </div>
   </div>
 
   <div id="faroukModal" class="gate" hidden>
     <div class="gate-card card" role="dialog" aria-modal="true" aria-labelledby="faroukTitle">
       <div class="mascot-mini" aria-hidden="true"><svg class="capy-svg"><use href="#capy"/></svg></div>
-      <h2 id="faroukTitle">Hallo Farouk 🐹</h2>
-      <p class="muted">Das ist der Admin-Garten. Nur für dich. · This is the admin garden.</p>
-      <button class="btn btn-primary" id="faroukYes" type="button">Garten öffnen</button>
+      <h2 id="faroukTitle" data-i18n="farouk.title">Hi Farouk 🐹</h2>
+      <p class="muted" data-i18n="farouk.lead">This is the admin garden. Just for you.</p>
+      <button class="btn btn-primary" id="faroukYes" type="button" data-i18n="farouk.go">Open the garden</button>
     </div>
   </div>
 
@@ -120,48 +124,52 @@
     <header class="topbar">
       <div class="hello">
         <div class="kapi-wrap">
-          <button type="button" class="mascot-mini pet-target" id="mascotMini" aria-label="Kapi streicheln">
+          <button type="button" class="mascot-mini pet-target" id="mascotMini" data-i18n-aria="kapi.pet" aria-label="Pet Kapi">
             <svg class="capy-svg"><use href="#capy"/></svg>
             <span class="pet-count" id="petCount" aria-live="polite">0</span>
           </button>
-          <button type="button" class="pet-mute" id="petMute" aria-pressed="false" aria-label="Kapi-Ton an" title="Kapi-Ton">🔊</button>
+          <button type="button" class="pet-mute" id="petMute" aria-pressed="false" data-i18n-aria="kapi.soundOn" aria-label="Kapi sound on" data-i18n-title="kapi.chirp" title="Kapi makes a sound">🔊</button>
         </div>
         <div>
-          <h1 id="helloTitle">Hallo!</h1>
-          <p class="sub" id="helloSub">Bereit für ein bisschen Deutsch?</p>
+          <h1 id="helloTitle">Hi!</h1>
+          <p class="sub" id="helloSub" data-i18n="greet.ready">Ready for a little German?</p>
         </div>
       </div>
       <div class="chips">
         <span class="chip" id="whoChip">…</span>
-        <span class="chip chip-streak" title="Tage in Folge · day streak">🔥 <b id="streakCount">0</b></span>
-        <span class="chip chip-stars" title="Sterne · stars">⭐ <b id="starCount">0</b></span>
-        <span class="chip chip-demo" id="demoBadge" hidden title="Demo-Modus: simulierte Ergebnisse">DEMO</span>
+        <span class="chip chip-streak" data-i18n-title="chip.streak" title="Day streak">🔥 <b id="streakCount">0</b></span>
+        <span class="chip chip-stars" data-i18n-title="chip.stars" title="Stars">⭐ <b id="starCount">0</b></span>
+        <div class="lang-switch" id="langSwitchApp" role="group" data-i18n-aria="nav.lang" aria-label="Language">
+          <button type="button" data-lang="de" aria-pressed="false">DE</button>
+          <button type="button" data-lang="en" aria-pressed="true">EN</button>
+        </div>
+        <span class="chip chip-demo" id="demoBadge" hidden data-i18n-title="chip.demo" title="Demo mode: simulated scores">DEMO</span>
       </div>
     </header>
 
-    <nav class="bottom-nav" aria-label="Navigation">
-      <button class="tab active" data-view="practice"><span>🎤</span>Üben</button>
-      <button class="tab" data-view="review"><span>🔁</span>Wiederholen</button>
-      <button class="tab" data-view="progress"><span>🌷</span>Fortschritt</button>
-      <button class="tab" data-view="settings"><span>⚙️</span>Mehr</button>
+    <nav class="bottom-nav" data-i18n-aria="nav.label" aria-label="Navigation">
+      <button class="tab active" data-view="practice"><span class="tab-ico">🎤</span><span class="tab-label" data-i18n="tab.practice">Practice</span></button>
+      <button class="tab" data-view="review"><span class="tab-ico">🔁</span><span class="tab-label" data-i18n="tab.review">Review</span></button>
+      <button class="tab" data-view="progress"><span class="tab-ico">🌷</span><span class="tab-label" data-i18n="tab.progress">Progress</span></button>
+      <button class="tab" data-view="settings"><span class="tab-ico">⚙️</span><span class="tab-label" data-i18n="tab.more">More</span></button>
     </nav>
 
-    <main id="view-practice" class="view active" aria-label="Üben">
-      <div class="next-bar">
-        <button class="btn btn-primary" id="weiterBtn" type="button">Weiter →</button>
-        <button class="btn btn-soft" id="pathToggle" type="button" aria-expanded="false">🗺️ Lektionen</button>
+    <main id="view-practice" class="view active" data-i18n-aria="tab.practice" aria-label="Practice">
+      <div class="next-bar" id="nextBar">
+        <button class="btn btn-primary" id="weiterBtn" type="button" data-i18n="next.continue">Continue →</button>
+        <button class="btn btn-soft" id="pathToggle" type="button" aria-expanded="false" data-i18n="next.lessons">🗺️ Lessons</button>
         <button class="btn btn-ghost" id="reviewJump" type="button">🔁 <b id="reviewCount">0</b></button>
       </div>
       <p class="muted small" id="nextHint"></p>
 
       <section class="card path-card" id="pathWrap" hidden>
         <div class="card-head">
-          <h2>Lektionen <small>Units</small></h2>
-          <button class="btn btn-ghost" id="pathClose" type="button">Schließen</button>
+          <h2><span data-i18n="lessons.title">Lessons</span> <small data-i18n="lessons.sub">Units</small></h2>
+          <button class="btn btn-ghost" id="pathClose" type="button" data-i18n="next.close">Close</button>
         </div>
         <div class="unit-path" id="pathGrid"></div>
         <div id="unitDetail" hidden>
-          <h3 class="h3" id="unitDetailTitle">Lektion</h3>
+          <h3 class="h3" id="unitDetailTitle" data-i18n="lessons.one">Lesson</h3>
           <div class="sentence-list" id="unitSentences"></div>
         </div>
       </section>
@@ -170,8 +178,8 @@
         <section class="col-left">
           <article class="card sentence-card" id="sentenceCard">
             <div class="card-head">
-              <span class="pill" id="deckLabel">Lektion</span>
-              <span class="best-stars" id="bestStars" title="Bestes Ergebnis · best">☆☆☆</span>
+              <span class="pill" id="deckLabel" data-i18n="lessons.one">Lesson</span>
+              <span class="best-stars" id="bestStars" data-i18n-title="best.title" title="Best score">☆☆☆</span>
             </div>
 
             <div id="deckSentence">
@@ -180,22 +188,22 @@
             </div>
 
             <div id="customBox" hidden>
-              <label for="customInput" class="label">Freier Satz · Your own sentence</label>
-              <textarea id="customInput" lang="de" rows="3" maxlength="300" placeholder="z.B. Ich liebe Capybaras und Bienen."></textarea>
+              <label for="customInput" class="label" data-i18n="free.label">Your own sentence</label>
+              <textarea id="customInput" lang="de" rows="3" maxlength="300" data-i18n-placeholder="free.placeholder" placeholder="e.g. Ich liebe Capybaras und Bienen."></textarea>
               <div class="row">
-                <button class="btn btn-soft" id="useCustom" type="button">✨ Diesen Satz üben</button>
+                <button class="btn btn-soft" id="useCustom" type="button" data-i18n="free.use">✨ Practice this sentence</button>
               </div>
             </div>
 
             <div class="row tools">
-              <button class="btn btn-soft" id="playNormal" type="button" aria-label="Anhören">🔊 Anhören</button>
-              <button class="btn btn-soft" id="playSlow" type="button" aria-label="Langsam anhören">🐢 Langsam</button>
-              <button class="btn btn-ghost" id="toggleTrans" type="button" aria-label="Übersetzung zeigen/verstecken">🙈 EN</button>
+              <button class="btn btn-soft" id="playNormal" type="button" data-i18n="listen" data-i18n-aria="listen.aria" aria-label="Listen">🔊 Listen</button>
+              <button class="btn btn-soft" id="playSlow" type="button" data-i18n="slow" data-i18n-aria="slow.aria" aria-label="Listen slowly">🐢 Slow</button>
+              <button class="btn btn-ghost" id="toggleTrans" type="button" data-i18n-aria="trans.aria" aria-label="Show or hide the English translation">🙈 EN</button>
             </div>
 
             <div class="row">
-              <button class="btn btn-primary" id="weiterBtn2" type="button">Weiter →</button>
-              <button class="btn btn-ghost" id="freeToggle" type="button">✏️ Freier Satz</button>
+              <button class="btn btn-primary" id="weiterBtn2" type="button" data-i18n="next.continue">Continue →</button>
+              <button class="btn btn-ghost" id="freeToggle" type="button" data-i18n="free.toggle">✏️ Own sentence</button>
             </div>
 
             <ul class="tips" id="tips"></ul>
@@ -204,12 +212,12 @@
           <section class="card record-card">
             <div class="record-wrap">
               <div class="rings" aria-hidden="true"><span></span><span></span><span></span></div>
-              <button class="record-btn" id="recordBtn" type="button" aria-label="Aufnehmen · Record">
+              <button class="record-btn" id="recordBtn" type="button" data-i18n-aria="record.aria" aria-label="Record">
                 <svg class="mic-icon"><use href="#mic"/></svg>
               </button>
             </div>
-            <p class="status" id="status">Tippen &amp; sprechen · Tap &amp; speak</p>
-            <p class="hint" id="hint">Lies den Satz laut vor – ich höre zu! 🐹</p>
+            <p class="status" id="status" data-i18n="status.tap">Tap and speak</p>
+            <p class="hint" id="hint" data-i18n="hint.ready">Read the sentence out loud — I'm listening! 🐹</p>
           </section>
         </section>
 
@@ -217,7 +225,7 @@
           <article class="card result-card" id="resultCard" hidden aria-live="polite">
             <div class="result-top">
               <div class="score-ring" id="scoreRing" style="--p:0">
-                <div class="score-inner"><b id="pronScore">0</b><small>Punkte</small></div>
+                <div class="score-inner"><b id="pronScore">0</b><small data-i18n="score.points">Points</small></div>
               </div>
               <div class="result-msg">
                 <div class="earned" id="earnedStars">⭐⭐⭐</div>
@@ -226,124 +234,125 @@
               </div>
             </div>
             <div class="bars" id="bars"></div>
-            <h3 class="h3">Deine Wörter · Your words <small>(tippen für Laute · tap for sounds)</small></h3>
+            <h3 class="h3"><span data-i18n="result.words">Your words</span> <small data-i18n="result.wordsHint">(tap for sounds)</small></h3>
             <div class="words" id="words"></div>
             <div class="legend">
               <span><i class="dot good"></i>≥ 80</span>
               <span><i class="dot ok"></i>60–79</span>
               <span><i class="dot bad"></i>&lt; 60</span>
-              <span><i class="dot miss"></i>ausgelassen</span>
+              <span><i class="dot miss"></i><span data-i18n="legend.miss">missed</span></span>
             </div>
             <p class="heard" id="heard"></p>
             <div class="row">
-              <button class="btn btn-soft" id="againBtn" type="button">🔁 Nochmal</button>
-              <button class="btn btn-primary" id="nextAfter" type="button">Weiter →</button>
+              <button class="btn btn-soft" id="againBtn" type="button" data-i18n="again">🔁 Again</button>
+              <button class="btn btn-primary" id="nextAfter" type="button" data-i18n="next.continue">Continue →</button>
             </div>
           </article>
 
           <article class="card empty-card" id="emptyCard">
-            <button type="button" class="mascot-big pet-target" id="mascotBig" aria-label="Kapi streicheln">
+            <button type="button" class="mascot-big pet-target" id="mascotBig" data-i18n-aria="kapi.pet" aria-label="Pet Kapi">
               <svg class="capy-svg"><use href="#capy"/></svg>
               <svg class="bee-svg"><use href="#bee"/></svg>
               <span class="pet-count">0</span>
             </button>
-            <p class="pet-hint">Streichle mich · Pet me</p>
-            <p class="bubble" id="bubble">Hör dir den Satz an, dann drück auf das Mikro. Du schaffst das! 💛<br><span>Listen first, then tap the mic. You've got this!</span></p>
+            <p class="pet-hint" data-i18n="empty.pet">Pet me</p>
+            <p class="bubble" id="bubble" data-i18n="empty.bubble">Listen to the sentence, then tap the mic. You've got this! 💛</p>
           </article>
         </section>
       </div>
     </main>
 
-    <main id="view-review" class="view" aria-label="Wiederholen">
-      <section class="card">
-        <h2>Wiederholen 🔁 <small>Review</small></h2>
-        <p class="muted" id="reviewLead">Sätze mit niedrigem Ergebnis kommen wieder, bis sie sitzen.</p>
+    <main id="view-review" class="view" data-i18n-aria="tab.review" aria-label="Review">
+      <section class="card" id="reviewCard">
+        <h2><span data-i18n="review.title">Review 🔁</span> <small data-i18n="review.sub">Due today</small></h2>
+        <p class="muted" id="reviewLead" data-i18n="review.none">Nothing is due today. New sentences are waiting in Practice.</p>
         <div class="row">
-          <button class="btn btn-primary" id="startReview" type="button">Heute wiederholen</button>
+          <button class="btn btn-primary" id="startReview" type="button" data-i18n="review.start">Review today</button>
         </div>
         <ul class="recent" id="reviewList"></ul>
       </section>
-      <section class="card">
-        <h3 class="h3">Schwache Laute · Weak sounds</h3>
-        <p class="muted" id="weakLead">Nach ein paar Versuchen siehst du hier, welche Laute noch üben wollen.</p>
+      <section class="card" id="drillCard">
+        <h3 class="h3" data-i18n="weak.title">Weak sounds</h3>
+        <p class="muted" id="weakLead" data-i18n="weak.empty">After a few tries, ü, ö, ch, r and the others show up here.</p>
         <div id="weakList" class="weak-list"></div>
         <div class="row">
-          <button class="btn btn-soft" id="startDrill" type="button">Kurzen Drill starten</button>
+          <button class="btn btn-soft" id="startDrill" type="button" data-i18n="weak.start">Start a short drill</button>
         </div>
       </section>
     </main>
 
-    <main id="view-progress" class="view" aria-label="Fortschritt">
+    <main id="view-progress" class="view" data-i18n-aria="tab.progress" aria-label="Progress">
       <section class="card">
-        <h2>Dein Fortschritt 🌷 <small>Your progress</small></h2>
+        <h2><span data-i18n="progress.title">Your progress 🌷</span> <small data-i18n="progress.sub">At a glance</small></h2>
         <div class="stats">
-          <div class="stat"><span>🔥</span><b id="pStreak">0</b><small>Tage in Folge<br>day streak</small></div>
-          <div class="stat"><span>⭐</span><b id="pStars">0</b><small>Sterne<br>stars</small></div>
-          <div class="stat"><span>🎤</span><b id="pAttempts">0</b><small>Versuche<br>attempts</small></div>
-          <div class="stat"><span>💯</span><b id="pAvg">–</b><small>Ø Punkte<br>avg score</small></div>
+          <div class="stat"><span>🔥</span><b id="pStreak">0</b><small data-i18n="stat.streak">Day streak</small></div>
+          <div class="stat"><span>⭐</span><b id="pStars">0</b><small data-i18n="stat.stars">Stars</small></div>
+          <div class="stat"><span>🎤</span><b id="pAttempts">0</b><small data-i18n="stat.tries">Tries</small></div>
+          <div class="stat"><span>💯</span><b id="pAvg">–</b><small data-i18n="stat.avg">Avg score</small></div>
         </div>
       </section>
       <section class="card">
-        <h3 class="h3">Letzte 7 Tage · Last 7 days</h3>
+        <h3 class="h3" data-i18n="week.title">Last 7 days</h3>
         <div class="week" id="week"></div>
       </section>
       <section class="card">
-        <h3 class="h3">Lektionen · Units</h3>
+        <h3 class="h3" data-i18n="units.title">Lessons</h3>
         <div id="levelProgress"></div>
       </section>
       <section class="card">
-        <h3 class="h3">Zuletzt geübt · Recent</h3>
+        <h3 class="h3" data-i18n="recent.title">Recent practice</h3>
         <ul class="recent" id="recent"></ul>
       </section>
       <section class="card only-admin" id="khawlaCard">
-        <h2>Khawlas Fortschritt 🌷 <small>from her phone, when sync is on</small></h2>
+        <h2><span data-i18n="her.title">Khawla's progress 🌷</span> <small data-i18n="her.sub">from her phone, when sync is on</small></h2>
         <p class="status small" id="khawlaSync"></p>
         <div class="stats" id="khawlaStats"></div>
         <div id="khawlaUnits"></div>
-        <h3 class="h3">Zuletzt bei ihr · Her recent tries</h3>
+        <h3 class="h3" data-i18n="her.recent">Her recent tries</h3>
         <ul class="recent" id="khawlaRecent"></ul>
         <div class="row">
-          <button class="btn btn-soft" id="refreshKhawla" type="button">🔄 Aus der Cloud holen</button>
+          <button class="btn btn-soft" id="refreshKhawla" type="button" data-i18n="her.pull">🔄 Fetch from the cloud</button>
         </div>
       </section>
     </main>
 
-    <main id="view-settings" class="view" aria-label="Einstellungen">
-      <section class="card">
-        <h2>Für dich 💛 <small id="settingsWho">Preferences</small></h2>
+    <main id="view-settings" class="view" data-i18n-aria="tab.more" aria-label="More">
+      <section class="card" id="settingsCard">
+        <h2><span data-i18n="you.title">For you 💛</span> <small id="settingsWho">Khawla</small></h2>
         <div class="toggle-row">
           <div>
-            <b>Übersetzung zeigen</b>
-            <p class="muted">Englische Übersetzung unter dem Satz. · Show the English translation.</p>
+            <b data-i18n="trans.title">Show translation</b>
+            <p class="muted" data-i18n="trans.help">English line under the German sentence.</p>
           </div>
           <label class="switch"><input type="checkbox" id="transToggle"><span></span></label>
         </div>
         <p class="status small" id="syncStatus"></p>
         <div class="row">
-          <button class="btn btn-soft" id="exportMine" type="button">⬇️ Fortschritt exportieren</button>
-          <button class="btn btn-ghost" id="importMine" type="button">⬆️ Importieren</button>
+          <button class="btn btn-soft" id="showGuide" type="button" data-i18n="guide.again">🐹 Show guide again</button>
+          <button class="btn btn-soft" id="exportMine" type="button" data-i18n="export.mine">⬇️ Export progress</button>
+          <button class="btn btn-ghost" id="importMine" type="button" data-i18n="import.mine">⬆️ Import</button>
           <input id="importFile" type="file" accept="application/json,.json" hidden />
         </div>
         <div class="row">
-          <button class="btn btn-ghost danger" id="logoutBtn" type="button">🚪 Abmelden</button>
+          <button class="btn btn-ghost danger" id="logoutBtn" type="button" data-i18n="logout">🚪 Log out</button>
         </div>
       </section>
 
       <section class="card only-admin">
-        <h2>Azure ⚙️ <small>nur Farouk · admin</small></h2>
+        <h2><span data-i18n="azure.title">Azure ⚙️</span> <small data-i18n="azure.sub">Farouk only · admin</small></h2>
         <div class="toggle-row">
           <div>
-            <b>Demo-Modus</b>
-            <p class="muted">Simulierte Ergebnisse, kein Schlüssel nötig. Gilt auf diesem Gerät für beide. · Simulated scores on this device.</p>
+            <b data-i18n="demo.title">Demo mode</b>
+            <p class="muted" data-i18n="demo.help">Simulated scores, no key needed. Applies to both people on this device.</p>
           </div>
           <label class="switch"><input type="checkbox" id="demoToggle"><span></span></label>
         </div>
-        <label class="label" for="keyInput">Azure Speech Key</label>
+        <label class="label" for="keyInput" data-i18n="key.label">Azure Speech key</label>
         <div class="input-row">
-          <input id="keyInput" type="password" autocomplete="off" spellcheck="false" placeholder="wird nur auf diesem Gerät gespeichert">
-          <button class="btn btn-ghost" id="showKey" type="button" aria-label="Schlüssel zeigen">👁️</button>
+          <input id="keyInput" type="password" autocomplete="off" spellcheck="false" data-i18n-placeholder="key.placeholder" placeholder="stored only on this device">
+          <button class="btn btn-ghost" id="showKey" type="button" data-i18n-aria="key.show" aria-label="Show key">👁️</button>
         </div>
-        <label class="label" for="regionInput">Region</label>
+        <label class="label" for="regionInput" data-i18n="region.label">Region</label>
         <input id="regionInput" list="regions" autocomplete="off" spellcheck="false" placeholder="northeurope">
         <datalist id="regions">
           <option value="northeurope"><option value="westeurope"><option value="germanywestcentral">
@@ -351,31 +360,31 @@
           <option value="eastus"><option value="eastus2"><option value="westus2"><option value="centralindia">
           <option value="southeastasia"><option value="japaneast"><option value="australiaeast">
         </datalist>
-        <label class="label" for="voiceSelect">Stimme · Voice (Azure TTS)</label>
+        <label class="label" for="voiceSelect" data-i18n="voice.label">Voice (Azure)</label>
         <select id="voiceSelect">
-          <option value="de-DE-KatjaNeural">Katja (weiblich)</option>
-          <option value="de-DE-AmalaNeural">Amala (weiblich)</option>
-          <option value="de-DE-SeraphinaMultilingualNeural">Seraphina (weiblich)</option>
-          <option value="de-DE-ConradNeural">Conrad (männlich)</option>
-          <option value="de-DE-FlorianMultilingualNeural">Florian (männlich)</option>
+          <option value="de-DE-KatjaNeural" data-i18n="voice.katja">Katja (female)</option>
+          <option value="de-DE-AmalaNeural" data-i18n="voice.amala">Amala (female)</option>
+          <option value="de-DE-SeraphinaMultilingualNeural" data-i18n="voice.seraphina">Seraphina (female)</option>
+          <option value="de-DE-ConradNeural" data-i18n="voice.conrad">Conrad (male)</option>
+          <option value="de-DE-FlorianMultilingualNeural" data-i18n="voice.florian">Florian (male)</option>
         </select>
         <div class="toggle-row">
           <div>
-            <b>Prosodie anfragen</b>
-            <p class="muted">Azure liefert den Prosodie-Wert derzeit nur für Englisch (en-US).</p>
+            <b data-i18n="prosody.title">Request prosody</b>
+            <p class="muted" data-i18n="prosody.help">Azure currently returns the prosody score only for English (en-US).</p>
           </div>
           <label class="switch"><input type="checkbox" id="prosodyToggle"><span></span></label>
         </div>
         <div class="row">
-          <button class="btn btn-primary" id="saveSettings" type="button">💾 Speichern</button>
-          <button class="btn btn-soft" id="testConn" type="button">🔌 Verbindung testen</button>
+          <button class="btn btn-primary" id="saveSettings" type="button" data-i18n="save">💾 Save</button>
+          <button class="btn btn-soft" id="testConn" type="button" data-i18n="test">🔌 Test connection</button>
         </div>
         <p class="status small" id="settingsStatus"></p>
       </section>
 
       <section class="card only-admin">
-        <h2>Cloud-Sync ☁️ <small>Firebase</small></h2>
-        <p class="muted">Öffentliche Web-App-Daten aus den Firebase-Projekteinstellungen. Kein Admin-SDK-Schlüssel. Die Schritte stehen in der README.</p>
+        <h2><span data-i18n="cloud.title">Cloud sync ☁️</span> <small data-i18n="cloud.sub">Firebase</small></h2>
+        <p class="muted" data-i18n="cloud.lead">Public web-app values from the Firebase project settings. Not an admin SDK key. The steps are in the README.</p>
         <label class="label" for="fbApiKey">apiKey</label>
         <input id="fbApiKey" autocomplete="off" spellcheck="false" placeholder="AIza…">
         <label class="label" for="fbAuthDomain">authDomain</label>
@@ -384,72 +393,72 @@
         <input id="fbProjectId" autocomplete="off" spellcheck="false" placeholder="projekt-id">
         <label class="label" for="fbAppId">appId</label>
         <input id="fbAppId" autocomplete="off" spellcheck="false" placeholder="1:…:web:…">
-        <label class="label" for="syncPassword">Sync-Passwort</label>
-        <input id="syncPassword" type="password" autocomplete="off" spellcheck="false" placeholder="Passwort der beiden Firebase-Nutzer">
+        <label class="label" for="syncPassword" data-i18n="cloud.pw">Sync password</label>
+        <input id="syncPassword" type="password" autocomplete="off" spellcheck="false" data-i18n-placeholder="cloud.pwPh" placeholder="Password for both Firebase users">
         <div class="row">
-          <button class="btn btn-primary" id="saveSync" type="button">💾 Sync speichern</button>
-          <button class="btn btn-soft" id="testSync" type="button">🔌 Sync testen</button>
+          <button class="btn btn-primary" id="saveSync" type="button" data-i18n="cloud.save">💾 Save sync</button>
+          <button class="btn btn-soft" id="testSync" type="button" data-i18n="cloud.test">🔌 Test sync</button>
         </div>
         <p class="status small" id="syncAdminStatus"></p>
-        <h3 class="h3">Khawlas Handy einrichten</h3>
-        <p class="muted">Der Link enthält die Firebase-Web-Konfiguration und das Sync-Passwort. Wer den Link hat, kann die Fortschritte lesen. Den Azure-Schlüssel nur ankreuzen, wenn ihr Gerät echt bewerten soll.</p>
+        <h3 class="h3" data-i18n="setup.title">Set up Khawla's phone</h3>
+        <p class="muted" data-i18n="setup.lead">The link contains the Firebase web config and the sync password. Anyone with the link can read the progress. Tick the Azure key only if her phone should score for real.</p>
         <div class="toggle-row">
           <div>
-            <b>Azure-Schlüssel in den Link</b>
-            <p class="muted">Dann steht der Speech-Key in der URL. Nicht weiterleiten. · The speech key will be inside the link.</p>
+            <b data-i18n="setup.azure">Include the Azure key</b>
+            <p class="muted" data-i18n="setup.azureHelp">The speech key will be inside the URL. Don't forward that link.</p>
           </div>
           <label class="switch"><input type="checkbox" id="includeAzure"><span></span></label>
         </div>
         <div class="row">
-          <button class="btn btn-soft" id="makeSetup" type="button">🔗 Link und QR erzeugen</button>
+          <button class="btn btn-soft" id="makeSetup" type="button" data-i18n="setup.make">🔗 Make link and QR</button>
         </div>
-        <input id="setupLink" readonly spellcheck="false" placeholder="Der Link erscheint hier.">
-        <img id="setupQr" alt="QR-Code für Khawlas Handy" hidden>
+        <input id="setupLink" readonly spellcheck="false" data-i18n-placeholder="setup.ph" placeholder="The link shows up here.">
+        <img id="setupQr" data-i18n-alt="setup.qr" alt="QR code for Khawla's phone" hidden>
       </section>
 
       <section class="card only-admin">
-        <h2>Eigene Lektion ✏️ <small>custom unit</small></h2>
-        <label class="label" for="customTitle">Titel</label>
-        <input id="customTitle" maxlength="60" placeholder="z.B. Beim Bäcker">
-        <label class="label" for="customEmoji">Emoji</label>
+        <h2><span data-i18n="custom.title">Custom lesson ✏️</span> <small data-i18n="custom.sub">your own</small></h2>
+        <label class="label" for="customTitle" data-i18n="custom.name">Title</label>
+        <input id="customTitle" maxlength="60" data-i18n-placeholder="custom.namePh" placeholder="e.g. At the bakery">
+        <label class="label" for="customEmoji" data-i18n="custom.emoji">Emoji</label>
         <input id="customEmoji" maxlength="4" placeholder="🥐">
-        <label class="label" for="customLevel">Niveau</label>
+        <label class="label" for="customLevel" data-i18n="custom.level">Level</label>
         <select id="customLevel">
           <option>A1</option>
           <option>A2</option>
           <option>B1</option>
         </select>
-        <label class="label" for="customLines">Sätze · eine Zeile: Deutsch | Englisch</label>
+        <label class="label" for="customLines" data-i18n="custom.lines">Sentences · one line: German | English</label>
         <textarea id="customLines" rows="5" placeholder="Ich hätte gern ein Croissant. | I'd like a croissant."></textarea>
         <div class="row">
-          <button class="btn btn-primary" id="addUnit" type="button">Lektion hinzufügen</button>
+          <button class="btn btn-primary" id="addUnit" type="button" data-i18n="custom.add">Add lesson</button>
         </div>
         <div id="customUnitList"></div>
       </section>
 
       <section class="card only-admin">
-        <h2>Zurücksetzen &amp; Backup</h2>
+        <h2 data-i18n="backup.title">Reset & backup</h2>
         <div class="toggle-row">
           <div>
-            <b>Azure-Schlüssel in die Backup-Datei</b>
-            <p class="muted">Die Datei ist dann geheim. · The file will contain the speech key.</p>
+            <b data-i18n="backup.key">Include the Azure key in the backup file</b>
+            <p class="muted" data-i18n="backup.keyHelp">The file will then be secret.</p>
           </div>
           <label class="switch"><input type="checkbox" id="exportKey"><span></span></label>
         </div>
         <div class="row">
-          <button class="btn btn-soft" id="exportAll" type="button">⬇️ Alles exportieren</button>
-          <button class="btn btn-ghost danger" id="resetMine" type="button">🗑️ Meinen Fortschritt löschen</button>
-          <button class="btn btn-ghost danger" id="resetKhawla" type="button">🗑️ Khawlas Fortschritt löschen</button>
+          <button class="btn btn-soft" id="exportAll" type="button" data-i18n="backup.all">⬇️ Export everything</button>
+          <button class="btn btn-ghost danger" id="resetMine" type="button" data-i18n="backup.me">🗑️ Delete my progress</button>
+          <button class="btn btn-ghost danger" id="resetKhawla" type="button" data-i18n="backup.her">🗑️ Delete Khawla's progress</button>
         </div>
       </section>
 
       <section class="card info">
-        <h3 class="h3">Gut zu wissen · Good to know</h3>
+        <h3 class="h3" data-i18n="info.title">Good to know</h3>
         <ul>
-          <li>🔒 Fortschritt liegt auf diesem Gerät und, wenn Sync an ist, in eurem Firebase-Projekt. · Progress stays on this device and, with sync, in your Firebase project.</li>
-          <li>🎤 Das Mikrofon braucht HTTPS. GitHub Pages ist HTTPS.</li>
-          <li>📱 Zum Startbildschirm hinzufügen, dann ist es eine App. · Add to home screen.</li>
-          <li>☁️ Ohne Firebase-Projekt übt ihr ganz normal weiter, nur ohne Handy-zu-Handy-Sync.</li>
+          <li data-i18n="info.1">🔒 Progress stays on this device and, when sync is on, in your Firebase project.</li>
+          <li data-i18n="info.2">🎤 The microphone needs HTTPS. GitHub Pages is HTTPS.</li>
+          <li data-i18n="info.3">📱 Add it to the home screen and it behaves like an app.</li>
+          <li data-i18n="info.4">☁️ Without a Firebase project you can still practice; phones just won't sync.</li>
         </ul>
         <p class="muted small" id="secureNote"></p>
       </section>
@@ -466,14 +475,29 @@
     <p class="muted" id="sheetError"></p>
     <div class="phonemes" id="phonemes"></div>
     <div class="row">
-      <button class="btn btn-soft" id="sheetPlay" type="button">🔊 Wort anhören</button>
-      <button class="btn btn-ghost" id="sheetClose" type="button">Schließen</button>
+      <button class="btn btn-soft" id="sheetPlay" type="button" data-i18n="sheet.play">🔊 Hear the word</button>
+      <button class="btn btn-ghost" id="sheetClose" type="button" data-i18n="sheet.close">Close</button>
     </div>
   </aside>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+  <div id="guide" class="guide" hidden>
+    <div class="guide-blocker"></div>
+    <div class="guide-hole" id="guideHole"></div>
+    <div class="guide-card" id="guideCard" role="dialog" aria-modal="true" aria-labelledby="guideText">
+      <div class="guide-kapi happy" aria-hidden="true"><svg class="capy-svg"><use href="#capy"/></svg></div>
+      <p id="guideText"></p>
+      <div class="guide-actions">
+        <button class="btn btn-ghost" id="guideSkip" type="button">Skip</button>
+        <span class="guide-count" id="guideCount">1 / 6</span>
+        <button class="btn btn-primary" id="guideNext" type="button">Next</button>
+      </div>
+    </div>
+  </div>
+
   <script src="vendor/qrcode.js"></script>
+  <script src="i18n.js"></script>
   <script src="sentences.js"></script>
   <script src="logic.js"></script>
   <script src="app.js"></script>

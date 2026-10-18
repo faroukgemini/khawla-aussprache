@@ -70,6 +70,8 @@ function loadProgress(id) {
     days: L.recomputeDays(attempts),
     showTrans: p.showTrans || { value: true, at: 0 },
     pet: L.readPet(p),
+    uiLang: L.readUiLang(p),
+    guide: L.readGuide(p),
   });
 }
   function saveProgress(id, p) {
@@ -77,6 +79,161 @@ function loadProgress(id) {
     saveRaw(userKey(id), p);
   }
   function saveSettings() { saveRaw(LS_SETTINGS, settings); }
+
+  const LS_UILANG = "aussprache.uilang.v1";
+  let uiLang = "en";
+  let langChosen = false;
+  let guideIndex = 0;
+  let guideOpen = false;
+  let openUnitId = null;
+  const GUIDE = [
+    { sel: "#sentenceCard", key: "guide.sentence", view: "practice" },
+    { sel: "#recordBtn", key: "guide.record", view: "practice" },
+    { sel: "#nextBar", key: "guide.nextStep", view: "practice" },
+    { sel: "#startReview", key: "guide.review", view: "review" },
+    { sel: "#mascotMini", key: "guide.kapi", view: "practice" },
+    { sel: "#logoutBtn", key: "guide.settings", view: "settings" },
+  ];
+  function tr(key, vars) {
+    const table = (window.I18N && window.I18N[uiLang]) || {};
+    const fallback = (window.I18N && window.I18N.en) || {};
+    let s = table[key] != null ? table[key] : (fallback[key] != null ? fallback[key] : key);
+    if (vars) Object.keys(vars).forEach((k) => { s = s.split("{" + k + "}").join(String(vars[k])); });
+    return s;
+  }
+  function trIn(lang, key, vars) {
+    const prev = uiLang;
+    uiLang = lang === "de" ? "de" : "en";
+    const s = tr(key, vars);
+    uiLang = prev;
+    return s;
+  }
+  function unitName(u) {
+    if (!u) return "";
+    return uiLang === "en" && u.titleEn ? u.titleEn : (u.title || "");
+  }
+  function tipText(tip) {
+    const parts = String(tip || "").split(/\s·\s/);
+    if (parts.length < 2) return tip || "";
+    return uiLang === "en" ? parts.slice(1).join(" · ") : parts[0];
+  }
+  function paintI18n() {
+    document.documentElement.lang = uiLang === "en" ? "en" : "de";
+    document.title = tr("app.title");
+    $$("[data-i18n]").forEach((el) => { el.textContent = tr(el.getAttribute("data-i18n")); });
+    $$("[data-i18n-placeholder]").forEach((el) => { el.setAttribute("placeholder", tr(el.getAttribute("data-i18n-placeholder"))); });
+    $$("[data-i18n-aria]").forEach((el) => { el.setAttribute("aria-label", tr(el.getAttribute("data-i18n-aria"))); });
+    $$("[data-i18n-title]").forEach((el) => { el.title = tr(el.getAttribute("data-i18n-title")); });
+    $$("[data-i18n-alt]").forEach((el) => { el.alt = tr(el.getAttribute("data-i18n-alt")); });
+    $$(".lang-switch").forEach((sw) => {
+      sw.setAttribute("aria-label", tr("nav.lang"));
+      sw.querySelectorAll("button").forEach((b) => {
+        const on = b.dataset.lang === uiLang;
+        b.classList.toggle("on", on);
+        b.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+    });
+  }
+  function applyLang(value, userChoice) {
+    uiLang = value === "de" ? "de" : "en";
+    saveRaw(LS_UILANG, { value: uiLang, at: Date.now() });
+    if (userChoice && !session) langChosen = true;
+    if (userChoice && session) {
+      progress.uiLang = { value: uiLang, at: Date.now() };
+      saveProgress(session, progress);
+      schedulePush();
+    }
+    paintI18n();
+    if (session) {
+      renderAll();
+      greet();
+      if (guideOpen) showGuideStep(guideIndex);
+    }
+  }
+  function adoptLang(user) {
+    if (langChosen) {
+      progress.uiLang = { value: uiLang, at: Date.now() };
+      saveProgress(user, progress);
+      return;
+    }
+    const saved = progress.uiLang;
+    if (saved && saved.at && (saved.value === "en" || saved.value === "de")) uiLang = saved.value;
+    else {
+      uiLang = user === "khawla" ? "en" : "de";
+      progress.uiLang = { value: uiLang, at: Date.now() };
+      saveProgress(user, progress);
+    }
+    saveRaw(LS_UILANG, { value: uiLang, at: Date.now() });
+  }
+
+  let guideTimer = 0;
+  function showGuideStep(i) {
+    const step = GUIDE[i];
+    if (!step) { finishGuide(); return; }
+    guideIndex = i;
+    guideOpen = true;
+    if (step.view) showView(step.view);
+    $("#guide").hidden = false;
+    $("#guideText").textContent = tr(step.key);
+    $("#guideSkip").textContent = tr("guide.skip");
+    $("#guideNext").textContent = i === GUIDE.length - 1 ? tr("guide.done") : tr("guide.next");
+    $("#guideCount").textContent = (i + 1) + " / " + GUIDE.length;
+    const el = $(step.sel);
+    if (el && el.scrollIntoView) el.scrollIntoView({ block: "center", inline: "nearest" });
+    requestAnimationFrame(() => requestAnimationFrame(positionGuide));
+    clearTimeout(guideTimer);
+    guideTimer = setTimeout(positionGuide, 380);
+  }
+  function positionGuide() {
+    if (!guideOpen) return;
+    const step = GUIDE[guideIndex];
+    const el = step && $(step.sel);
+    const hole = $("#guideHole");
+    const card = $("#guideCard");
+    if (!el || !hole || !card) return;
+    const r = el.getBoundingClientRect();
+    if (!r.width && !r.height) return;
+    const pad = 8;
+    const top = Math.max(8, r.top - pad);
+    const left = Math.max(8, r.left - pad);
+    const width = Math.min(window.innerWidth - 16, Math.max(24, r.width + pad * 2));
+    const height = Math.min(window.innerHeight - 16, Math.max(24, r.height + pad * 2));
+    hole.style.top = top + "px";
+    hole.style.left = left + "px";
+    hole.style.width = width + "px";
+    hole.style.height = height + "px";
+    card.style.visibility = "hidden";
+    card.style.top = "0px";
+    card.style.left = "12px";
+    const ch = card.offsetHeight;
+    const cw = card.offsetWidth;
+    card.style.visibility = "";
+    const gap = 12;
+    let cardTop = top + height + gap;
+    if (cardTop + ch > window.innerHeight - 8) cardTop = Math.max(8, top - ch - gap);
+    const cardLeft = Math.min(Math.max(12, left), Math.max(12, window.innerWidth - cw - 12));
+    card.style.top = cardTop + "px";
+    card.style.left = cardLeft + "px";
+  }
+  function finishGuide() {
+    guideOpen = false;
+    clearTimeout(guideTimer);
+    const layer = $("#guide");
+    if (layer) layer.hidden = true;
+    if (session) {
+      progress.guide = { done: true, at: Date.now() };
+      saveProgress(session, progress);
+      schedulePush();
+    }
+    showView("practice");
+  }
+  function maybeStartGuide() {
+    if (!session || guideOpen) return;
+    if ($("#app").hidden) return;
+    if (!$("#loveModal").hidden || !$("#faroukModal").hidden) return;
+    if (progress.guide && progress.guide.done) return;
+    showGuideStep(0);
+  }
 
   function units() {
     const custom = (catalog.customUnits || []).filter((u) => u && !u.deleted && u.sentences && u.sentences.length);
@@ -226,8 +383,8 @@ function loadProgress(id) {
     if (mute) {
       mute.setAttribute("aria-pressed", pet.mute ? "true" : "false");
       mute.textContent = pet.mute ? "🔇" : "🔊";
-      mute.title = pet.mute ? "Kapi ist leise" : "Kapi macht einen Ton";
-      mute.setAttribute("aria-label", pet.mute ? "Kapi-Ton aus" : "Kapi-Ton an");
+      mute.title = pet.mute ? tr("kapi.quiet") : tr("kapi.chirp");
+      mute.setAttribute("aria-label", pet.mute ? tr("kapi.soundOff") : tr("kapi.soundOn"));
     }
   }
   function spawnHeart(host) {
@@ -281,7 +438,7 @@ function loadProgress(id) {
     spawnHeart(host);
     chirp();
     renderPet();
-    if (count && before < PET_SLEEPY && pet.count >= PET_SLEEPY) toast("Kapi ist zufrieden und wird schläfrig. 💤");
+    if (count && before < PET_SLEEPY && pet.count >= PET_SLEEPY) toast(tr("toast.sleepy"));
     clearTimeout(host._petTimer);
     host._petTimer = setTimeout(() => host.classList.remove("petting"), 460);
   }
@@ -371,8 +528,8 @@ function loadProgress(id) {
   /* ---------------- rendering ---------------- */
   function renderHeader() {
     const name = session === "farouk" ? "Farouk" : "Khawla";
-    $("#helloTitle").textContent = `Hallo ${name}!`;
-    $("#whoChip").textContent = isAdmin() ? "Farouk · Admin" : "Khawla";
+    $("#helloTitle").textContent = tr("hello", { name });
+    $("#whoChip").textContent = isAdmin() ? tr("who.admin") : tr("who.learner");
     $("#streakCount").textContent = computeStreak(progress);
     $("#starCount").textContent = totalStars(progress);
     $("#demoBadge").hidden = !useDemo();
@@ -392,22 +549,23 @@ function loadProgress(id) {
       $("#englishText").textContent = c.en || "";
       $("#englishText").classList.toggle("hide", !showTrans());
     }
-    let label = "Lektion";
-    if (mode === "review") label = `Wiederholen · ${Math.max(1, queue.indexOf(currentId) + 1)} / ${queue.length}`;
-    else if (mode === "drill") label = `Laute · ${Math.max(1, queue.indexOf(currentId) + 1)} / ${queue.length}`;
-    else if (isFree) label = "Freier Satz";
-    else if (c.unit) label = `${c.level} · ${c.unit.emoji || ""} ${c.unit.title} · ${c.i + 1} / ${c.n}`;
+    const place = { i: Math.max(1, queue.indexOf(currentId) + 1), n: queue.length || 0 };
+    let label = tr("lessons.one");
+    if (mode === "review") label = tr("deck.review", place);
+    else if (mode === "drill") label = tr("deck.drill", place);
+    else if (isFree) label = tr("deck.free");
+    else if (c.unit) label = tr("deck.unit", { level: c.level, name: `${c.unit.emoji || ""} ${unitName(c.unit)}`.trim(), i: c.i + 1, n: c.n });
     $("#deckLabel").textContent = label;
-    $("#toggleTrans").textContent = showTrans() ? "🙈 EN" : "👀 EN";
+    $("#toggleTrans").textContent = showTrans() ? tr("trans.hide") : tr("trans.show");
     const best = c.id ? L.bestScore(progress, c.id) : null;
     $("#bestStars").textContent = starStr(best != null ? starsFor(best) : 0);
-    $("#bestStars").title = best != null ? `Bestes Ergebnis: ${best}` : "Noch nicht geübt";
+    $("#bestStars").title = best != null ? tr("best.score", { n: best }) : tr("best.none");
     const tips = $("#tips");
     tips.innerHTML = "";
     if (c.de) {
       (window.SOUND_TIPS || []).filter((t) => t.test.test(c.de)).slice(0, 2).forEach((t) => {
         const li = document.createElement("li");
-        li.textContent = "💡 " + t.tip;
+        li.textContent = "💡 " + tipText(t.tip);
         tips.appendChild(li);
       });
     }
@@ -415,13 +573,16 @@ function loadProgress(id) {
     const nxt = L.nextUpId(units(), progress, currentId, isAdmin(), Date.now());
     const nh = L.findSentence(units(), nxt);
     $("#nextHint").textContent = mode === "review"
-      ? "Wiederholungsrunde · review round"
+      ? tr("hint.review")
       : mode === "drill"
-        ? "Kurzer Laut-Drill · short sound drill"
+        ? tr("hint.drill")
         : nh
-          ? `Als Nächstes · next: ${nh.unit.title} — ${nh.sentence.de}`
+          ? tr("hint.next", { unit: unitName(nh.unit), de: nh.sentence.de })
           : "";
-    if (!$("#pathWrap").hidden) renderPath();
+    if (!$("#pathWrap").hidden) {
+      renderPath();
+      if (openUnitId && !$("#unitDetail").hidden) refreshOpenUnit();
+    }
   }
 
   function renderPath() {
@@ -437,7 +598,7 @@ function loadProgress(id) {
       b.className = "unit-node" + (unlocked ? "" : " locked") + (avg >= 80 ? " done" : "") + (progress.cursor && progress.cursor.unitId === u.id ? " current" : "");
       b.innerHTML = `<span class="emoji"></span><b></b><small></small><div class="mini-track"><span></span></div>`;
       b.querySelector(".emoji").textContent = unlocked ? (u.emoji || "🌱") : "🔒";
-      b.querySelector("b").textContent = u.title;
+      b.querySelector("b").textContent = unitName(u);
       b.querySelector("small").textContent = `${u.level} · ${done}/${u.sentences.length} · Ø ${Math.round(avg)}`;
       b.querySelector(".mini-track span").style.width = Math.round(avg) + "%";
       b.onclick = () => openUnit(u.id);
@@ -450,12 +611,13 @@ function loadProgress(id) {
     const i = list.findIndex((u) => u.id === unitId);
     if (i < 0) return;
     if (!isAdmin() && !L.isUnlocked(i, list, progress)) {
-      toast("Noch zu. Die vorige Lektion braucht Ø 80. · Locked until the previous unit averages 80.");
+      toast(tr("locked"));
       return;
     }
     const u = list[i];
+    openUnitId = unitId;
     $("#unitDetail").hidden = false;
-    $("#unitDetailTitle").textContent = `${u.emoji || ""} ${u.title} · ${u.titleEn || ""}`;
+    $("#unitDetailTitle").textContent = `${u.emoji || ""} ${unitName(u)}`.trim();
     const box = $("#unitSentences");
     box.innerHTML = "";
     u.sentences.forEach((s, idx) => {
@@ -479,6 +641,13 @@ function loadProgress(id) {
       box.appendChild(btn);
     });
     $("#unitDetail").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  function refreshOpenUnit() {
+    if (!openUnitId || $("#unitDetail").hidden) return;
+    const u = units().find((x) => x.id === openUnitId);
+    if (!u) return;
+    $("#unitDetailTitle").textContent = `${u.emoji || ""} ${unitName(u)}`.trim();
   }
 
   function hideResult() {
@@ -505,7 +674,6 @@ function loadProgress(id) {
     $("#pAvg").textContent = att.length ? Math.round(att.reduce((a, x) => a + x.score, 0) / att.length) : "–";
     const week = $("#week");
     week.innerHTML = "";
-    const names = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
     const days = [];
     for (let k = 6; k >= 0; k--) { const d = new Date(); d.setDate(d.getDate() - k); days.push(d); }
     const max = Math.max(1, ...days.map((d) => (progress.days || {})[dayKey(d)] || 0));
@@ -513,7 +681,10 @@ function loadProgress(id) {
       const v = (progress.days || {})[dayKey(d)] || 0;
       const el = document.createElement("div");
       el.className = "day" + (k === 6 ? " today" : "");
-      el.innerHTML = `<span>${v || ""}</span><div class="col ${v ? "" : "zero"}" style="height:${v ? 10 + (v / max) * 80 : 4}%"></div><span>${names[d.getDay()]}</span>`;
+      el.innerHTML = `<span></span><div class="col ${v ? "" : "zero"}" style="height:${v ? 10 + (v / max) * 80 : 4}%"></div><span></span>`;
+      const labels = el.querySelectorAll("span");
+      labels[0].textContent = v ? String(v) : "";
+      labels[1].textContent = tr("day." + d.getDay());
       week.appendChild(el);
     });
     const lp = $("#levelProgress");
@@ -526,9 +697,9 @@ function loadProgress(id) {
       const top = document.createElement("div");
       top.className = "lvl-top";
       const name = document.createElement("span");
-      name.textContent = `${unlocked ? (u.emoji || "") : "🔒"} ${u.title}`;
+      name.textContent = `${unlocked ? (u.emoji || "") : "🔒"} ${unitName(u)}`.trim();
       const meta = document.createElement("span");
-      meta.textContent = unlocked ? `Ø ${avg}` : "zu";
+      meta.textContent = unlocked ? `Ø ${avg}` : tr("locked.short");
       top.append(name, meta);
       const track = document.createElement("div");
       track.className = "track";
@@ -541,14 +712,20 @@ function loadProgress(id) {
     });
     const rec = $("#recent");
     rec.innerHTML = "";
-    if (!att.length) rec.innerHTML = `<li><span>Noch nichts – leg los! 🐹</span></li>`;
+    if (!att.length) {
+      const li = document.createElement("li");
+      const span = document.createElement("span");
+      span.textContent = tr("recent.empty");
+      li.appendChild(span);
+      rec.appendChild(li);
+    }
     att.slice(-8).reverse().forEach((a) => {
       const li = document.createElement("li");
       const t = document.createElement("span");
       t.textContent = a.text || "";
       const s = document.createElement("span");
       s.className = "sc " + band(a.score);
-      s.textContent = a.score + (a.demo ? " ·demo" : "");
+      s.textContent = a.score + (a.demo ? tr("recent.demo") : "");
       li.append(t, s);
       rec.appendChild(li);
     });
@@ -559,17 +736,17 @@ function loadProgress(id) {
     const hers = loadProgress("khawla");
     const meta = (loadRaw(LS_SYNC, {}) || {}).khawla || {};
     const line = $("#khawlaSync");
-    if (!firebaseConfigured()) line.textContent = "Cloud noch nicht eingerichtet – hier siehst du nur, was auf diesem Gerät von Khawla liegt.";
-    else if (meta.error) line.textContent = "Letzter Abruf fehlgeschlagen: " + meta.error;
-    else if (meta.at) line.textContent = "Zuletzt geholt · pulled: " + new Date(meta.at).toLocaleString() + (meta.remoteUpdatedAt ? " · Stand: " + new Date(meta.remoteUpdatedAt).toLocaleString() : "");
-    else line.textContent = "Noch nicht aus der Cloud geholt.";
+    if (!firebaseConfigured()) line.textContent = tr("her.offline");
+    else if (meta.error) line.textContent = tr("her.err", { err: meta.error });
+    else if (meta.at) line.textContent = tr("her.at", { when: new Date(meta.at).toLocaleString() }) + (meta.remoteUpdatedAt ? tr("her.stand", { when: new Date(meta.remoteUpdatedAt).toLocaleString() }) : "");
+    else line.textContent = tr("her.never");
     const stats = $("#khawlaStats");
     stats.innerHTML = "";
     const cells = [
-      ["🔥", computeStreak(hers), "Serie"],
-      ["⭐", totalStars(hers), "Sterne"],
-      ["🎤", (hers.attempts || []).length, "Versuche"],
-      ["💯", (hers.attempts || []).length ? Math.round(hers.attempts.reduce((a, x) => a + x.score, 0) / hers.attempts.length) : "–", "Ø"],
+      ["🔥", computeStreak(hers), tr("her.streak")],
+      ["⭐", totalStars(hers), tr("stat.stars")],
+      ["🎤", (hers.attempts || []).length, tr("stat.tries")],
+      ["💯", (hers.attempts || []).length ? Math.round(hers.attempts.reduce((a, x) => a + x.score, 0) / hers.attempts.length) : "–", tr("stat.avg")],
     ];
     cells.forEach(([emo, n, lab]) => {
       const d = document.createElement("div");
@@ -587,7 +764,7 @@ function loadProgress(id) {
       const el = document.createElement("div");
       el.className = "lvl";
       el.innerHTML = `<div class="lvl-top"><span></span><span></span></div><div class="track"><div class="fill"></div></div>`;
-      el.querySelector("span").textContent = `${u.emoji || ""} ${u.title}`;
+      el.querySelector("span").textContent = `${u.emoji || ""} ${unitName(u)}`.trim();
       el.querySelectorAll("span")[1].textContent = "Ø " + avg;
       el.querySelector(".fill").style.width = avg + "%";
       box.appendChild(el);
@@ -595,7 +772,13 @@ function loadProgress(id) {
     const rec = $("#khawlaRecent");
     rec.innerHTML = "";
     const att = hers.attempts || [];
-    if (!att.length) rec.innerHTML = `<li><span>Noch keine Versuche.</span></li>`;
+    if (!att.length) {
+      const li = document.createElement("li");
+      const span = document.createElement("span");
+      span.textContent = tr("her.none");
+      li.appendChild(span);
+      rec.appendChild(li);
+    }
     att.slice(-6).reverse().forEach((a) => {
       const li = document.createElement("li");
       const t = document.createElement("span");
@@ -611,8 +794,8 @@ function loadProgress(id) {
   function renderReview() {
     const due = L.dueReviews(progress, Date.now());
     $("#reviewLead").textContent = due.length
-      ? `${due.length} Satz${due.length === 1 ? "" : "sätze"} sind heute fällig. Schwache kommen zuerst.`
-      : "Heute ist nichts fällig. Neue Sätze warten unter Üben. · Nothing due today.";
+      ? (due.length === 1 ? tr("review.due1") : tr("review.due", { n: due.length }))
+      : tr("review.none");
     const list = $("#reviewList");
     list.innerHTML = "";
     due.slice(0, 30).forEach((r) => {
@@ -629,9 +812,7 @@ function loadProgress(id) {
     const weak = L.weakSounds(progress);
     const box = $("#weakList");
     box.innerHTML = "";
-    $("#weakLead").textContent = weak.length
-      ? "Die drei schwierigsten Laute, aus deinen Versuchen. · Your three hardest sounds."
-      : "Nach ein paar Versuchen erscheinen hier ü, ö, ch, r und die anderen.";
+    $("#weakLead").textContent = weak.length ? tr("weak.some") : tr("weak.empty");
     weak.slice(0, 6).forEach((w) => {
       const pat = (window.SOUND_PATTERNS || []).find((p) => p.id === w.k);
       const row = document.createElement("div");
@@ -650,25 +831,21 @@ function loadProgress(id) {
     const el = $("#syncStatus");
     if (!el || !session) return;
     if (!firebaseConfigured()) {
-      el.textContent = isAdmin()
-        ? "Cloud-Sync ist noch nicht eingerichtet."
-        : "Sync ist hier noch nicht eingerichtet. Farouk kann dir einen Link schicken. Dein Üben bleibt auf diesem Gerät.";
+      el.textContent = isAdmin() ? tr("sync.offAdmin") : tr("sync.offLearner");
       return;
     }
     const meta = (loadRaw(LS_SYNC, {}) || {})[session] || {};
-    if (!navigator.onLine) el.textContent = "Offline – auf diesem Gerät gespeichert. Sync holt nach, sobald Netz da ist.";
-    else if (meta.error) el.textContent = "Gespeichert auf diesem Gerät. Sync: " + meta.error;
-    else if (meta.at) el.textContent = "Zuletzt synchronisiert · last sync: " + new Date(meta.at).toLocaleString();
-    else el.textContent = "Sync ist eingerichtet und startet gleich.";
+    if (!navigator.onLine) el.textContent = tr("sync.offline");
+    else if (meta.error) el.textContent = tr("sync.err", { err: meta.error });
+    else if (meta.at) el.textContent = tr("sync.at", { when: new Date(meta.at).toLocaleString() });
+    else el.textContent = tr("sync.soon");
   }
 
   function renderSettings() {
-    $("#settingsWho").textContent = isAdmin() ? "Farouk · Admin" : "Khawla";
+    $("#settingsWho").textContent = isAdmin() ? tr("you.whoAdmin") : tr("you.whoLearner");
     $("#transToggle").checked = showTrans();
     renderSyncStatus();
-    $("#secureNote").textContent = window.isSecureContext
-      ? "Sichere Verbindung – das Mikrofon kann benutzt werden."
-      : "Keine sichere Verbindung. Das Mikrofon braucht HTTPS.";
+    $("#secureNote").textContent = window.isSecureContext ? tr("secure.ok") : tr("secure.no");
     if (!isAdmin()) return;
     $("#keyInput").value = settings.key || "";
     $("#regionInput").value = settings.region || "";
@@ -696,7 +873,7 @@ function loadProgress(id) {
       const del = document.createElement("button");
       del.type = "button";
       del.className = "btn btn-ghost danger";
-      del.textContent = "Löschen";
+      del.textContent = tr("custom.delete");
       del.onclick = () => {
         u.deleted = true;
         u.updatedAt = Date.now();
@@ -715,6 +892,7 @@ function loadProgress(id) {
     renderPractice();
     if ($("#view-review").classList.contains("active")) renderReview();
     if ($("#view-progress").classList.contains("active")) { renderProgress(); renderKhawla(); }
+    if ($("#view-settings").classList.contains("active")) renderSettings();
     renderSyncStatus();
     renderPet();
   }
@@ -748,16 +926,16 @@ function loadProgress(id) {
       const i = queue.indexOf(currentId);
       const next = queue[i + 1];
       if (next) { showSentence(next); return; }
-      toast(mode === "review" ? "Wiederholung geschafft! 🌷" : "Laut-Drill geschafft! 🐝");
+      toast(mode === "review" ? tr("toast.reviewDone") : tr("toast.drillDone"));
       mode = "path";
       queue = [];
     }
     const id = L.nextUpId(units(), progress, mode === "free" ? null : currentId, isAdmin(), Date.now());
-    if (!id || id === currentId) { toast("Du bist auf dem neuesten Stand. 🌟"); return; }
+    if (!id || id === currentId) { toast(tr("toast.upToDate")); return; }
     const list = units();
     const idx = list.findIndex((u) => (u.sentences || []).some((s) => s.id === id));
     if (idx >= 0 && !isAdmin() && !L.isUnlocked(idx, list, progress)) {
-      toast("Die nächste Lektion ist noch zu. Ø 80 in dieser Lektion öffnet sie.");
+      toast(tr("toast.nextLocked"));
       return;
     }
     mode = "path";
@@ -789,8 +967,8 @@ function loadProgress(id) {
       sdkPromise = new Promise((res, rej) => {
         const s = document.createElement("script");
         s.src = "vendor/speech-sdk-1.52.0.min.js";
-        s.onload = () => (window.SpeechSDK ? res(window.SpeechSDK) : rej(new Error("SDK not found")));
-        s.onerror = () => { sdkPromise = null; rej(new Error("Speech SDK konnte nicht geladen werden")); };
+        s.onload = () => (window.SpeechSDK ? res(window.SpeechSDK) : rej(new Error(tr("err.sdk"))));
+        s.onerror = () => { sdkPromise = null; rej(new Error(tr("err.sdk"))); };
         document.head.appendChild(s);
       });
     }
@@ -821,7 +999,7 @@ function loadProgress(id) {
   }
   function browserTts(text, slow) {
     return new Promise((resolve, reject) => {
-      if (!("speechSynthesis" in window)) return reject(new Error("Keine Sprachausgabe im Browser"));
+      if (!("speechSynthesis" in window)) return reject(new Error(tr("err.noTts")));
       speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
       u.lang = "de-DE";
@@ -846,13 +1024,13 @@ function loadProgress(id) {
           return;
         } catch (e) {
           console.warn("Azure TTS failed, using browser voice:", e);
-          toast("Azure-Stimme nicht verfügbar – Browser-Stimme 🔈");
+          toast(tr("toast.ttsFallback"));
         }
       }
       await browserTts(text, slow);
     } catch (e) {
       console.warn(e);
-      toast("Audio konnte nicht abgespielt werden 😕");
+      toast(tr("toast.audio"));
     } finally { if (btn) btn.disabled = false; }
   }
 
@@ -865,12 +1043,12 @@ function loadProgress(id) {
     document.body.classList.toggle("thinking", s === "thinking");
     if (status != null) $("#status").textContent = status;
     if (hint != null) $("#hint").textContent = hint;
-    $("#recordBtn").setAttribute("aria-label", s === "listening" ? "Stopp · Stop" : "Aufnehmen · Record");
+    $("#recordBtn").setAttribute("aria-label", s === "listening" ? tr("record.stop") : tr("record.aria"));
     setMood(s === "listening" ? "listen" : null);
   }
   async function onRecord() {
     const c = current();
-    if (!c.de || !c.id) { toast("Wähl einen Satz oder schreib einen. ✏️"); return; }
+    if (!c.de || !c.id) { toast(tr("toast.pick")); return; }
     if (state === "listening") { cancelListening(); return; }
     if (state !== "idle") return;
     cancelled = false;
@@ -879,47 +1057,47 @@ function loadProgress(id) {
     try {
       let result;
       if (useDemo()) {
-        setState("listening", "Ich höre zu… 👂 (Demo)", hasKey() ? "Sprich jetzt – Demo simuliert. · Simulated." : "Kein Azure-Schlüssel auf diesem Gerät – Demo. · No key on this device, so this is a demo.");
+        setState("listening", tr("status.listenDemo"), hasKey() ? tr("hint.listenDemoKey") : tr("hint.listenDemo"));
         await sleep(1400);
         if (cancelled) return;
-        setState("thinking", "Ich bewerte… 🐝", "Einen Moment");
+        setState("thinking", tr("status.scoring"), tr("hint.moment"));
         await sleep(500);
         result = simulate(c.de);
       } else {
         result = await assessAzure(c.de);
         if (!result) return;
       }
-      setState("idle", "Tippen & sprechen · Tap & speak", "Nochmal? Übung macht die Meisterin! 🐹");
+      setState("idle", tr("status.tap"), tr("status.again"));
       showResult(c, result);
     } catch (e) {
       if (cancelled) return;
       console.warn(e);
-      setState("idle", "Oh nein! 🙈", friendlyError(e));
+      setState("idle", tr("status.oh"), friendlyError(e));
     }
   }
   function cancelListening() {
     cancelled = true;
     if (activeRecognizer) { try { activeRecognizer.close(); } catch {} activeRecognizer = null; }
-    setState("idle", "Abgebrochen · Cancelled", "Tippe nochmal, wenn du bereit bist.");
+    setState("idle", tr("status.cancel"), tr("hint.cancel"));
   }
   function friendlyError(e) {
     const m = String((e && e.message) || e);
-    if (/secure|https/i.test(m)) return "Das Mikrofon braucht HTTPS (oder localhost).";
-    if (/NotAllowed|Permission|denied/i.test(m)) return "Bitte erlaube den Mikrofon-Zugriff 🎤";
-    if (/NotFound|no.*device/i.test(m)) return "Kein Mikrofon gefunden.";
-    if (/1006|Unable to contact server|ConnectionFailure/i.test(m)) return "Keine Verbindung zu Azure – Schlüssel, Region, Internet prüfen.";
-    if (/401|403|unauthori|forbidden|authentication/i.test(m)) return "Azure-Schlüssel oder Region stimmt nicht.";
-    if (/nichts gehört|NoMatch/i.test(m)) return "Ich habe nichts gehört 🙉";
-    return m.length < 160 ? m : "Etwas ist schiefgelaufen.";
+    if (/secure|https/i.test(m)) return tr("err.https");
+    if (/NotAllowed|Permission|denied/i.test(m)) return tr("err.micDenied");
+    if (/NotFound|no.*device|mic-none/i.test(m)) return tr("err.micNone");
+    if (/1006|Unable to contact server|ConnectionFailure/i.test(m)) return tr("err.azureNet");
+    if (/401|403|unauthori|forbidden|authentication/i.test(m)) return tr("err.azureAuth");
+    if (/nichts gehört|NoMatch|heard nothing/i.test(m)) return tr("err.heardNothing");
+    return m.length < 160 ? m : tr("err.generic");
   }
   async function ensureMic() {
     if (!window.isSecureContext) throw new Error("Mic needs a secure context (HTTPS)");
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("Kein Mikrofon-Zugriff in diesem Browser");
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("mic-none");
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     stream.getTracks().forEach((t) => t.stop());
   }
   async function assessAzure(referenceText) {
-    setState("thinking", "Einen Moment… 🐝", "Mikrofon wird vorbereitet");
+    setState("thinking", tr("status.scoring"), tr("hint.prepMic"));
     await ensureMic();
     const sdk = await loadSdk();
     const cfg = speechConfig(sdk);
@@ -933,17 +1111,17 @@ function loadProgress(id) {
     const rec = new sdk.SpeechRecognizer(cfg, audio);
     pa.applyTo(rec);
     activeRecognizer = rec;
-    setState("listening", "Ich höre zu… 👂", "Lies den Satz jetzt laut vor.");
+    setState("listening", tr("status.listen"), tr("hint.speakNow"));
     const r = await new Promise((resolve, reject) => {
       rec.canceled = (_, ev) => { if (ev.reason === sdk.CancellationReason.Error) reject(new Error(`${ev.errorCode}: ${ev.errorDetails}`)); };
       rec.recognizeOnceAsync(resolve, (err) => reject(new Error(err)));
     }).finally(() => { try { rec.close(); } catch {} if (activeRecognizer === rec) activeRecognizer = null; });
     if (cancelled) return null;
-    setState("thinking", "Ich bewerte… 🐝", "Einen Moment");
-    if (r.reason === sdk.ResultReason.NoMatch) throw new Error("Ich habe nichts gehört (NoMatch)");
+    setState("thinking", tr("status.scoring"), tr("hint.moment"));
+    if (r.reason === sdk.ResultReason.NoMatch) throw new Error("NoMatch");
     if (r.reason === sdk.ResultReason.Canceled) {
       const cd = sdk.CancellationDetails.fromResult(r);
-      throw new Error(`${cd.ErrorCode || cd.errorCode || ""} ${cd.errorDetails || "Abgebrochen"}`);
+      throw new Error(`${cd.ErrorCode || cd.errorCode || ""} ${cd.errorDetails || tr("err.cancelled")}`);
     }
     const json = JSON.parse(r.properties.getProperty(sdk.PropertyId.SpeechServiceResponse_JsonResult) || "{}");
     return parseAzure(json, referenceText, r.text);
@@ -1038,11 +1216,11 @@ function loadProgress(id) {
   }
 
   const MESSAGES = [
-    [90, ["Wunderbar! 🌟", "Wonderful!"], ["Perfekt! Das Wasserschwein ist stolz! 🐹", "Perfect!"]],
-    [80, ["Super gemacht! 🎉", "Great job!"], ["Klasse! Das klingt richtig deutsch! 🐝", "That sounds really German!"]],
-    [70, ["Sehr gut! Fast perfekt. 💪", "Very good."], ["Toll! Noch ein kleines bisschen. ✨", "Just a tiny bit more."]],
-    [60, ["Gut! Weiter so! 🌱", "Good! Keep going!"], ["Schön! Mit Übung wird es besser. 🌷", "It'll get better with practice."]],
-    [0, ["Kein Problem – Übung macht die Meisterin! 💛", "Practice makes perfect!"], ["Mutig! Hör nochmal zu. 🐹", "Listen again and try once more."]],
+    [90, "msg.90a", "msg.90b"],
+    [80, "msg.80a", "msg.80b"],
+    [70, "msg.70a", "msg.70b"],
+    [60, "msg.60a", "msg.60b"],
+    [0, "msg.0a", "msg.0b"],
   ];
   let lastResult = null;
   function showResult(c, res) {
@@ -1063,18 +1241,22 @@ function loadProgress(id) {
     const step = () => { p = Math.min(pron, p + 3); ring.style.setProperty("--p", p); if (p < pron) requestAnimationFrame(step); };
     step();
     $("#earnedStars").textContent = st ? "⭐".repeat(st) + (st < 3 ? "☆".repeat(3 - st) : "") : "🌱";
-    const [, ...variants] = MESSAGES.find(([min]) => pron >= min);
-    const [de, en] = pick(variants);
+    const [, aKey, bKey] = MESSAGES.find(([min]) => pron >= min);
+    const primary = pick([aKey, bKey]);
+    const other = primary === aKey ? bKey : aKey;
+    const otherLang = uiLang === "en" ? "de" : "en";
     const weakest = res.words.filter((w) => w.error !== "Insertion" && w.error !== "Omission").sort((a, b) => a.score - b.score)[0];
-    $("#msgDe").textContent = de + (improved ? " Neuer Rekord! 🏆" : "");
-    $("#msgEn").textContent = en + (weakest && weakest.score < 80 ? ` · Tipp: übe „${weakest.word}“` : "");
+    $("#msgDe").textContent = tr(primary) + (improved ? " " + tr("result.record") : "") + (weakest && weakest.score < 80 ? tr("result.tip", { word: weakest.word }) : "");
+    $("#msgEn").textContent = trIn(otherLang, other);
     const bars = $("#bars");
     bars.innerHTML = "";
-    [["accuracy", "Genauigkeit", "Accuracy"], ["fluency", "Flüssigkeit", "Fluency"], ["completeness", "Vollständigkeit", "Completeness"], ["prosody", "Prosodie", "Prosody"]].forEach(([k, labelDe, labelEn]) => {
+    [["accuracy", "bar.accuracy"], ["fluency", "bar.fluency"], ["completeness", "bar.completeness"], ["prosody", "bar.prosody"]].forEach(([k, labelKey]) => {
       const v = s[k];
       const el = document.createElement("div");
       el.className = "bar" + (v == null ? " na" : "");
-      el.innerHTML = `<span class="name">${labelDe} <small>${labelEn}</small></span><span class="val">${v == null ? "n/a" : v}</span><div class="track"><div class="fill"></div></div>`;
+      el.innerHTML = `<span class="name"></span><span class="val"></span><div class="track"><div class="fill"></div></div>`;
+      el.querySelector(".name").textContent = tr(labelKey);
+      el.querySelector(".val").textContent = v == null ? "n/a" : String(v);
       bars.appendChild(el);
       if (v != null) {
         const f = el.querySelector(".fill");
@@ -1097,7 +1279,7 @@ function loadProgress(id) {
       b.onclick = () => openSheet(w);
       wrap.appendChild(b);
     });
-    $("#heard").textContent = res.heard ? `${res.demo ? "Demo · " : ""}Gehört: „${res.heard}“` : "";
+    $("#heard").textContent = res.heard ? tr(res.demo ? "heard.demo" : "heard.live", { text: res.heard }) : "";
     if (st >= 2 || newStars > 0) {
       setMood("happy");
       confetti(st >= 3 ? 140 : 80);
@@ -1108,8 +1290,8 @@ function loadProgress(id) {
     if (rev && rev.due) {
       const when = new Date(rev.due);
       $("#hint").textContent = rev.mastered
-        ? "Gemeistert – die nächste Wiederholung ist später. 🌟"
-        : `Wiederholung am ${when.toLocaleDateString()} · review scheduled`;
+        ? tr("review.whenMaster")
+        : tr("review.when", { when: when.toLocaleDateString() });
     }
     if (window.innerWidth < 900) card.scrollIntoView({ behavior: "smooth", block: "start" });
     renderHeader();
@@ -1129,22 +1311,27 @@ function loadProgress(id) {
     sheetWord = w;
     $("#sheetWord").textContent = w.word;
     const sc = $("#sheetScore");
-    sc.textContent = w.error === "Omission" ? "ausgelassen" : w.error === "Insertion" ? "extra" : `${w.score} / 100`;
+    sc.textContent = w.error === "Omission" ? tr("sheet.omitted") : w.error === "Insertion" ? tr("sheet.extra") : `${w.score} / 100`;
     const errText = {
-      None: w.score >= 80 ? "Sehr schön ausgesprochen!" : "Schau dir die Laute an.",
-      Mispronunciation: "Die roten Laute brauchen noch Übung.",
-      Omission: "Dieses Wort habe ich nicht gehört.",
-      Insertion: "Dieses Wort steht nicht im Satz.",
+      None: w.score >= 80 ? tr("sheet.good") : tr("sheet.look"),
+      Mispronunciation: tr("sheet.mis"),
+      Omission: tr("sheet.miss"),
+      Insertion: tr("sheet.ins"),
     };
     $("#sheetError").textContent = errText[w.error] || w.error || "";
     const ph = $("#phonemes");
     ph.innerHTML = "";
-    if (!w.phonemes.length) ph.innerHTML = `<p class="muted">Keine Laut-Details.</p>`;
+    if (!w.phonemes.length) {
+      const p = document.createElement("p");
+      p.className = "muted";
+      p.textContent = tr("sheet.none");
+      ph.appendChild(p);
+    }
     w.phonemes.forEach((p, i) => {
       const d = document.createElement("div");
       d.className = "ph " + band(p.score ?? 0);
       const b = document.createElement("b");
-      b.textContent = p.p ? `/${p.p}/` : `Laut ${i + 1}`;
+      b.textContent = p.p ? `/${p.p}/` : tr("sheet.sound", { n: i + 1 });
       const sm = document.createElement("small");
       sm.textContent = p.score ?? "–";
       d.append(b, sm);
@@ -1201,12 +1388,12 @@ function loadProgress(id) {
       const el = document.createElement("script");
       el.src = src;
       el.onload = () => res();
-      el.onerror = () => rej(new Error("Firebase-Skript nicht geladen"));
+      el.onerror = () => rej(new Error(tr("err.firebaseScript")));
       document.head.appendChild(el);
     });
   }
   async function ensureFirebase() {
-    if (!firebaseConfigured()) throw new Error("Sync ist noch nicht eingerichtet.");
+    if (!firebaseConfigured()) throw new Error(tr("err.syncOff"));
     if (fbDb) return;
     if (!fbReady) {
       fbReady = (async () => {
@@ -1247,6 +1434,8 @@ function loadProgress(id) {
       cursor: prog.cursor || null,
       showTrans: prog.showTrans || { value: true, at: 0 },
       pet: L.readPet(prog),
+      uiLang: L.readUiLang(prog),
+      guide: L.readGuide(prog),
       clearedAt: prog.clearedAt || 0,
       updatedAt: Date.now(),
     }));
@@ -1260,9 +1449,9 @@ function loadProgress(id) {
   }
   function friendlySync(e) {
     const m = String((e && (e.message || e.code)) || e);
-    if (/invalid-credential|wrong-password|user-not-found|invalid-login|invalid-email/i.test(m)) return "Anmeldung fehlgeschlagen. Sync-Passwort und die Nutzer farouk@aussprache.app und khawla@aussprache.app prüfen.";
-    if (/permission-denied/i.test(m)) return "Firestore-Regeln haben den Zugriff abgelehnt.";
-    if (/offline|network|unavailable|Failed to get/i.test(m)) return "Keine Verbindung.";
+    if (/invalid-credential|wrong-password|user-not-found|invalid-login|invalid-email/i.test(m)) return tr("err.syncLogin");
+    if (/permission-denied/i.test(m)) return tr("err.syncRules");
+    if (/offline|network|unavailable|Failed to get/i.test(m)) return tr("err.syncNet");
     return m.slice(0, 180);
   }
   async function pullCatalog() {
@@ -1344,14 +1533,14 @@ function loadProgress(id) {
     });
   }
   function importBackup(obj) {
-    if (!obj || obj.kind !== "aussprache-backup") throw new Error("Das ist keine Aussprache-Datei.");
+    if (!obj || obj.kind !== "aussprache-backup") throw new Error(tr("err.backup"));
     if (isAdmin() && obj.users) {
       ["khawla", "farouk"].forEach((id) => {
         if (obj.users[id]) saveProgress(id, L.mergeProgress(loadProgress(id), obj.users[id]));
       });
     } else if (obj.progress) {
       const target = obj.user === "farouk" || obj.user === "khawla" ? obj.user : session;
-      if (!isAdmin() && target !== session) throw new Error("Du kannst nur deinen eigenen Fortschritt importieren.");
+      if (!isAdmin() && target !== session) throw new Error(tr("err.importOwn"));
       saveProgress(target, L.mergeProgress(loadProgress(target), obj.progress));
     }
     if (isAdmin() && obj.catalog && Array.isArray(obj.catalog.customUnits)) {
@@ -1492,14 +1681,16 @@ function loadProgress(id) {
   /* ---------------- wiring ---------------- */
   function greet() {
     const h = new Date().getHours();
-    const g = h < 11 ? "Guten Morgen ☀️" : h < 17 ? "Schön, dass du da bist! 🌼" : "Guten Abend 🌙";
+    const g = h < 11 ? tr("greet.morning") : h < 17 ? tr("greet.day") : tr("greet.evening");
     const s = computeStreak(progress);
-    $("#helloSub").textContent = s >= 2 ? `🔥 ${s} Tage in Folge – weiter so!` : g;
+    $("#helloSub").textContent = s >= 2 ? tr("greet.streak", { n: s }) : g;
   }
   function enterApp(user) {
     session = user;
     saveRaw(LS_SESSION, { user });
     progress = loadProgress(user);
+    adoptLang(user);
+    paintI18n();
     document.body.dataset.role = isAdmin() ? "admin" : "learner";
     $("#gate").hidden = true;
     $("#loveModal").hidden = true;
@@ -1512,9 +1703,13 @@ function loadProgress(id) {
     renderAll();
     greet();
     showView(viewFromHash());
-    syncNow().catch(() => {});
+    syncNow().catch(() => {}).finally(() => maybeStartGuide());
   }
   function logout() {
+    guideOpen = false;
+    clearTimeout(guideTimer);
+    const layer = $("#guide");
+    if (layer) layer.hidden = true;
     localStorage.removeItem(LS_SESSION);
     session = null;
     $("#app").hidden = true;
@@ -1524,10 +1719,21 @@ function loadProgress(id) {
     $("#gate").hidden = false;
     $("#nameInput").value = "";
     $("#nameError").textContent = "";
+    paintI18n();
   }
   function onName() {
     const n = $("#nameInput").value.trim().toLowerCase();
     $("#nameError").textContent = "";
+    if (n === "khawla" || n === "farouk") {
+      if (!langChosen) {
+        const saved = loadProgress(n).uiLang;
+        uiLang = saved && saved.at && (saved.value === "en" || saved.value === "de")
+          ? saved.value
+          : (n === "khawla" ? "en" : "de");
+        saveRaw(LS_UILANG, { value: uiLang, at: Date.now() });
+        paintI18n();
+      }
+    }
     if (n === "khawla") {
       $("#gate").hidden = true;
       $("#loveModal").hidden = false;
@@ -1542,7 +1748,7 @@ function loadProgress(id) {
       $("#faroukModal").hidden = false;
       return;
     }
-    $("#nameError").textContent = "Ich kenne nur Khawla und Farouk.";
+    $("#nameError").textContent = tr("gate.unknown");
   }
 
   function bindApp() {
@@ -1580,11 +1786,11 @@ function loadProgress(id) {
     };
     $("#useCustom").onclick = () => {
       freeText = $("#customInput").value.trim().replace(/\s+/g, " ");
-      if (!freeText) { toast("Schreib einen deutschen Satz."); return; }
+      if (!freeText) { toast(tr("toast.freeEmpty")); return; }
       mode = "free";
       hideResult();
       renderPractice();
-      toast("Bereit! Mikro antippen 🎤");
+      toast(tr("toast.freeReady"));
     };
     $("#customInput").addEventListener("input", (e) => { freeText = e.target.value; $("#recordBtn").disabled = !freeText.trim(); });
     $("#sheetClose").onclick = closeSheet;
@@ -1593,7 +1799,7 @@ function loadProgress(id) {
     document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSheet(); });
     $("#startReview").onclick = () => {
       const due = L.dueReviews(progress, Date.now()).map((r) => r.sentenceId).filter((id) => textFor(id).de);
-      if (!due.length) { toast("Heute ist nichts fällig. 🌷"); return; }
+      if (!due.length) { toast(tr("toast.nothingDue")); return; }
       mode = "review";
       queue = due;
       showSentence(due[0]);
@@ -1601,7 +1807,7 @@ function loadProgress(id) {
     };
     $("#startDrill").onclick = () => {
       const ids = L.drillSentenceIds(units(), progress, window.SOUND_PATTERNS, 6);
-      if (!ids.length) { toast("Üb erst ein paar Sätze, dann kenn ich deine Laute."); return; }
+      if (!ids.length) { toast(tr("toast.needTries")); return; }
       mode = "drill";
       queue = ids;
       showSentence(ids[0]);
@@ -1623,27 +1829,27 @@ function loadProgress(id) {
       if (!file) return;
       const reader = new FileReader();
       reader.onload = () => {
-        try { importBackup(JSON.parse(String(reader.result || ""))); toast("Importiert und zusammengeführt. ✅"); }
-        catch (e) { toast(e.message || "Import fehlgeschlagen"); }
+        try { importBackup(JSON.parse(String(reader.result || ""))); toast(tr("toast.imported")); }
+        catch (e) { toast(e.message || tr("toast.importFail")); }
       };
       reader.readAsText(file);
     };
     $("#saveSettings").onclick = () => {
       readAdminForm();
-      $("#settingsStatus").textContent = !settings.demo && !hasKey() ? "Ohne Schlüssel läuft automatisch der Demo-Modus." : "Gespeichert.";
+      $("#settingsStatus").textContent = !settings.demo && !hasKey() ? tr("toast.savedDemo") : tr("toast.saved");
       renderHeader();
     };
     $("#demoToggle").onchange = () => { if (isAdmin()) { readAdminForm(); renderHeader(); } };
     $("#testConn").onclick = async () => {
       readAdminForm();
       const st = $("#settingsStatus");
-      if (!hasKey()) { st.textContent = "Bitte Schlüssel und Region eintragen."; return; }
-      st.textContent = "Teste…";
+      if (!hasKey()) { st.textContent = tr("toast.needKey"); return; }
+      st.textContent = tr("toast.testing");
       try {
         ttsCache.clear();
         const who = session === "farouk" ? "Farouk" : "Khawla";
         const url = await azureTts(`Hallo ${who}! Die Verbindung funktioniert.`, false);
-        st.textContent = "Verbindung ok. Azure spricht.";
+        st.textContent = tr("toast.azureOk");
         new Audio(url).play().catch(() => {});
       } catch (e) { st.textContent = friendlyError(e); }
     };
@@ -1651,7 +1857,7 @@ function loadProgress(id) {
     $("#saveSync").onclick = () => {
       readSyncForm();
       if (!firebaseConfigured()) {
-        $("#syncAdminStatus").textContent = "Es fehlen noch Felder oder das Passwort.";
+        $("#syncAdminStatus").textContent = tr("toast.syncFields");
         renderSyncStatus();
         return;
       }
@@ -1660,15 +1866,15 @@ function loadProgress(id) {
     $("#testSync").onclick = async () => {
       readSyncForm();
       const st = $("#syncAdminStatus");
-      st.textContent = "Teste Anmeldung…";
+      st.textContent = tr("toast.syncTesting");
       try {
         await syncNow();
-        st.textContent = "Sync ok. Fortschritt liegt in users/" + session + ".";
+        st.textContent = tr("toast.syncOk", { user: session });
       } catch (e) { st.textContent = friendlySync(e); }
     };
     $("#makeSetup").onclick = () => {
       readSyncForm();
-      if (!firebaseConfigured()) { toast("Zuerst Firebase-Daten und Passwort speichern."); return; }
+      if (!firebaseConfigured()) { toast(tr("toast.syncFirst")); return; }
       const payload = {
         v: 1,
         fb: settings.firebase,
@@ -1687,7 +1893,7 @@ function loadProgress(id) {
       } catch (e) {
         console.warn(e);
         $("#setupQr").hidden = true;
-        toast("QR ging nicht – den Link kannst du trotzdem kopieren.");
+        toast(tr("toast.qr"));
       }
     };
     $("#setupLink").addEventListener("focus", (e) => e.target.select());
@@ -1700,7 +1906,7 @@ function loadProgress(id) {
         const en = (parts.slice(1).join("|") || "").trim();
         return { id: "c-" + Date.now().toString(36) + "-" + i, de, en };
       }).filter((s) => s.de);
-      if (!title || !sentences.length) { toast("Titel und mindestens eine Zeile „Deutsch | Englisch“."); return; }
+      if (!title || !sentences.length) { toast(tr("toast.unitNeed")); return; }
       catalog.customUnits.push({
         id: "cu-" + Date.now().toString(36),
         level: $("#customLevel").value || "A1",
@@ -1714,25 +1920,31 @@ function loadProgress(id) {
       $("#customTitle").value = "";
       $("#customLines").value = "";
       renderCustomUnits();
-      toast("Lektion liegt am Ende des Pfads.");
+      toast(tr("toast.unitAdded"));
       pushCatalog().catch((e) => toast(friendlySync(e)));
     };
     $("#exportAll").onclick = exportAll;
-    $("#resetMine").onclick = () => { if (confirm("Deinen Fortschritt wirklich löschen?")) resetUser(session); };
-    $("#resetKhawla").onclick = () => { if (confirm("Khawlas Fortschritt auf diesem Gerät und in der Cloud löschen?")) resetUser("khawla"); };
+    $("#resetMine").onclick = () => { if (confirm(tr("confirm.resetMe"))) resetUser(session); };
+    $("#resetKhawla").onclick = () => { if (confirm(tr("confirm.resetHer"))) resetUser("khawla"); };
     $("#refreshKhawla").onclick = async () => {
-      $("#khawlaSync").textContent = "Hole Khawlas Stand…";
+      $("#khawlaSync").textContent = tr("toast.pulling");
       try {
-        if (!firebaseConfigured()) throw new Error("Sync ist noch nicht eingerichtet.");
+        if (!firebaseConfigured()) throw new Error(tr("err.syncOff"));
         await syncUser("khawla", false);
-        toast("Khawlas Fortschritt ist da.");
+        toast(tr("toast.pulled"));
       } catch (e) {
         setSyncMeta("khawla", { ok: false, at: Date.now(), error: friendlySync(e) });
         toast(friendlySync(e));
       }
       renderKhawla();
     };
-    window.addEventListener("hashchange", () => { if (session) showView(viewFromHash()); });
+    $("#showGuide").onclick = () => {
+      progress.guide = { done: false, at: Date.now() };
+      saveProgress(session, progress);
+      schedulePush();
+      showGuideStep(0);
+    };
+    window.addEventListener("hashchange", () => { if (session && !guideOpen) showView(viewFromHash()); });
     document.addEventListener("visibilitychange", () => { if (session) syncNow().catch(() => {}); });
     window.addEventListener("online", () => { if (session) syncNow().catch(() => {}); });
   }
@@ -1754,6 +1966,20 @@ function loadProgress(id) {
   function init() {
     migrate();
     consumeSetup();
+    const deviceLang = loadRaw(LS_UILANG, null);
+    if (deviceLang && (deviceLang.value === "en" || deviceLang.value === "de")) uiLang = deviceLang.value;
+    paintI18n();
+    document.addEventListener("click", (e) => {
+      const b = e.target.closest && e.target.closest(".lang-switch button");
+      if (!b || !b.dataset.lang) return;
+      applyLang(b.dataset.lang, true);
+    });
+    $("#guideSkip").onclick = () => finishGuide();
+    $("#guideNext").onclick = () => {
+      if (guideIndex >= GUIDE.length - 1) finishGuide();
+      else showGuideStep(guideIndex + 1);
+    };
+    window.addEventListener("resize", () => { if (guideOpen) positionGuide(); });
     if ("speechSynthesis" in window) speechSynthesis.getVoices();
     bindGate();
     bindPets();
@@ -1772,5 +1998,7 @@ function loadProgress(id) {
     get units() { return units(); },
     get progress() { return progress; },
     get settings() { return settings; },
+    get lang() { return uiLang; },
+    get guideOn() { return guideOpen; },
   };
 })();

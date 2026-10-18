@@ -128,4 +128,17 @@ const bare = logic.mergeProgress({ best: { s: { score: 60, at: 1 } }, attempts: 
 assert.equal(bare.pet.count, 0);
 assert.equal(logic.contentKey(bare), logic.contentKey({ ...bare, pet: { count: 0, countAt: 0, mute: false, muteAt: 0 } }));
 
+const langA = { uiLang: { value: "de", at: 10 }, guide: { done: false, at: 4 }, best: { s: { score: 90, at: 3 } }, attempts: [] };
+const langB = { uiLang: { value: "en", at: 20 }, guide: { done: true, at: 30 }, best: { s: { score: 70, at: 2 } }, attempts: [] };
+const langM = logic.mergeProgress(langA, langB);
+assert.equal(langM.best.s.score, 90);
+assert.equal(langM.uiLang.value, "en");
+assert.equal(langM.guide.done, true);
+const langReset = logic.mergeProgress(
+  { clearedAt: 40, uiLang: { value: "", at: 0 }, guide: { done: false, at: 0 }, best: {}, attempts: [] },
+  langB
+);
+assert.equal(langReset.uiLang.value, "");
+assert.equal(langReset.guide.done, false);
+
 console.log("logic tests ok", n, "sentences", UNITS.length, "units");
