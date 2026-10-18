@@ -69,6 +69,7 @@ function loadProgress(id) {
     reviews: p.reviews || {},
     days: L.recomputeDays(attempts),
     showTrans: p.showTrans || { value: true, at: 0 },
+    pet: L.readPet(p),
   });
 }
   function saveProgress(id, p) {
@@ -192,6 +193,178 @@ function loadProgress(id) {
       if (!el) return;
       el.classList.remove("happy", "listen");
       if (m) { void el.offsetWidth; el.classList.add(m); }
+    });
+  }
+
+  /* ---------------- petting ---------------- */
+  const PET_SLEEPY = 18;
+  let pet = L.readPet(null);
+  let petAudio = null;
+  let lastPetAt = 0;
+
+  function loadPet() { pet = L.readPet(progress); }
+  function savePet() {
+    progress.pet = {
+      count: pet.count,
+      countAt: pet.countAt,
+      mute: !!pet.mute,
+      muteAt: pet.muteAt,
+    };
+    if (!session) return;
+    saveProgress(session, progress);
+    schedulePush();
+  }
+  function renderPet() {
+    loadPet();
+    const label = (pet.count >= PET_SLEEPY ? "💤 " : "") + pet.count;
+    $$(".pet-count").forEach((el) => { el.textContent = label; });
+    ["#mascotMini", "#mascotBig"].forEach((s) => {
+      const el = $(s);
+      if (el) el.classList.toggle("sleepy", pet.count >= PET_SLEEPY);
+    });
+    const mute = $("#petMute");
+    if (mute) {
+      mute.setAttribute("aria-pressed", pet.mute ? "true" : "false");
+      mute.textContent = pet.mute ? "🔇" : "🔊";
+      mute.title = pet.mute ? "Kapi ist leise" : "Kapi macht einen Ton";
+      mute.setAttribute("aria-label", pet.mute ? "Kapi-Ton aus" : "Kapi-Ton an");
+    }
+  }
+  function spawnHeart(host) {
+    const hearts = host.querySelectorAll(".pet-heart");
+    if (hearts.length >= 8) hearts[0].remove();
+    const e = document.createElement("span");
+    e.className = "pet-heart";
+    e.setAttribute("aria-hidden", "true");
+    e.textContent = pet.count >= PET_SLEEPY ? "💤" : pick(["💖", "💗", "💛", "✨"]);
+    e.style.left = (28 + Math.random() * 44) + "%";
+    host.appendChild(e);
+    setTimeout(() => e.remove(), 950);
+  }
+  function chirp() {
+    if (pet.mute) return;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      if (!petAudio) petAudio = new AC();
+      if (petAudio.state === "suspended") petAudio.resume().catch(() => {});
+      const t = petAudio.currentTime;
+      const o = petAudio.createOscillator();
+      const g = petAudio.createGain();
+      o.type = "sine";
+      o.frequency.setValueAtTime(640, t);
+      o.frequency.exponentialRampToValueAtTime(920, t + 0.11);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.035, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+      o.connect(g);
+      g.connect(petAudio.destination);
+      o.start(t);
+      o.stop(t + 0.2);
+    } catch { /* autoplay or missing audio */ }
+  }
+  function reactPet(host, opts) {
+    if (!host) return;
+    const count = !opts || opts.count !== false;
+    const now = performance.now();
+    if (now - lastPetAt < 140) return;
+    lastPetAt = now;
+    const before = pet.count;
+    if (count) {
+      pet.count += 1;
+      pet.countAt = Date.now();
+      savePet();
+    }
+    host.classList.remove("petting");
+    void host.offsetWidth;
+    host.classList.add("petting", "happy");
+    spawnHeart(host);
+    chirp();
+    renderPet();
+    if (count && before < PET_SLEEPY && pet.count >= PET_SLEEPY) toast("Kapi ist zufrieden und wird schläfrig. 💤");
+    clearTimeout(host._petTimer);
+    host._petTimer = setTimeout(() => host.classList.remove("petting"), 460);
+  }
+  function capyCheer() {
+    ["#mascotMini", "#mascotBig"].forEach((s) => {
+      const el = $(s);
+      if (!el || el.closest("[hidden]")) return;
+      el.classList.add("happy");
+      el.classList.remove("petting");
+      void el.offsetWidth;
+      el.classList.add("petting");
+      spawnHeart(el);
+      clearTimeout(el._petTimer);
+      el._petTimer = setTimeout(() => el.classList.remove("petting"), 460);
+    });
+    chirp();
+  }
+  function bindPets() {
+    if (bindPets.done) return;
+    bindPets.done = true;
+    loadPet();
+    renderPet();
+    const mute = $("#petMute");
+    if (mute) mute.onclick = (e) => {
+      e.stopPropagation();
+      pet.mute = !pet.mute;
+      pet.muteAt = Date.now();
+      savePet();
+      renderPet();
+      if (!pet.mute) chirp();
+    };
+    $$(".pet-target").forEach((el) => {
+      let down = false;
+      let moved = false;
+      let lx = 0;
+      let ly = 0;
+      let trail = 0;
+      const stroked = (e) => {
+        const dx = e.clientX - lx;
+        const dy = e.clientY - ly;
+        lx = e.clientX;
+        ly = e.clientY;
+        trail += Math.hypot(dx, dy);
+        if (trail < 12) return false;
+        trail = 0;
+        return true;
+      };
+      el.addEventListener("pointerenter", (e) => {
+        lx = e.clientX;
+        ly = e.clientY;
+        trail = 0;
+        el._hoverReady = true;
+      });
+      el.addEventListener("pointerleave", () => { el._hoverReady = false; down = false; trail = 0; });
+      el.addEventListener("pointerdown", (e) => {
+        if (e.pointerType === "mouse" && e.button !== 0) return;
+        down = true;
+        moved = false;
+        trail = 0;
+        el._fromPointer = true;
+        lx = e.clientX;
+        ly = e.clientY;
+        try { el.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+      });
+      el.addEventListener("pointermove", (e) => {
+        if (e.pointerType === "mouse" && !down) {
+          if (!el._hoverReady) { lx = e.clientX; ly = e.clientY; el._hoverReady = true; trail = 0; return; }
+          if (stroked(e)) reactPet(el);
+          return;
+        }
+        if (!down) return;
+        if (stroked(e)) { moved = true; reactPet(el); }
+      });
+      el.addEventListener("pointerup", () => {
+        if (!down) return;
+        down = false;
+        if (!moved) reactPet(el);
+      });
+      el.addEventListener("pointercancel", () => { down = false; });
+      el.addEventListener("click", () => {
+        if (el._fromPointer) { el._fromPointer = false; return; }
+        reactPet(el);
+      });
     });
   }
 
@@ -543,6 +716,7 @@ function loadProgress(id) {
     if ($("#view-review").classList.contains("active")) renderReview();
     if ($("#view-progress").classList.contains("active")) { renderProgress(); renderKhawla(); }
     renderSyncStatus();
+    renderPet();
   }
 
   function showView(v) {
@@ -929,6 +1103,7 @@ function loadProgress(id) {
       confetti(st >= 3 ? 140 : 80);
       floatEmojis(st >= 3 ? ["🌟", "🐹", "🐝", "💖"] : ["⭐", "🐝"]);
     } else if (st >= 1) setMood("happy");
+    if (pron >= 80) capyCheer();
     const rev = progress.reviews[c.id];
     if (rev && rev.due) {
       const when = new Date(rev.due);
@@ -1071,6 +1246,7 @@ function loadProgress(id) {
       reviews: prog.reviews || {},
       cursor: prog.cursor || null,
       showTrans: prog.showTrans || { value: true, at: 0 },
+      pet: L.readPet(prog),
       clearedAt: prog.clearedAt || 0,
       updatedAt: Date.now(),
     }));
@@ -1580,6 +1756,7 @@ function loadProgress(id) {
     consumeSetup();
     if ("speechSynthesis" in window) speechSynthesis.getVoices();
     bindGate();
+    bindPets();
     const saved = loadRaw(LS_SESSION, null);
     if (saved && (saved.user === "khawla" || saved.user === "farouk")) enterApp(saved.user);
     if ("serviceWorker" in navigator && window.isSecureContext && !/[?&]nosw/.test(location.search)) {
@@ -1590,6 +1767,8 @@ function loadProgress(id) {
 
   window.__khawla = {
     simulate, g2p, moveNo, nearNo,
+    cheer: capyCheer,
+    get petState() { return { count: pet.count, mute: pet.mute }; },
     get units() { return units(); },
     get progress() { return progress; },
     get settings() { return settings; },

@@ -68,6 +68,7 @@ h2 small,.h3 small{font-family:var(--font);font-weight:600;color:var(--muted);fo
   .col-right{position:sticky;top:84px}
   .hello h1{font-size:2rem}
   .mascot-mini{width:70px;height:60px}
+  .mascot-mini.pet-target{width:84px;height:72px}
 }
 
 /* ---------- sentence card ---------- */
@@ -131,15 +132,30 @@ body.thinking .record-btn{background:radial-gradient(circle at 35% 30%,#e0d7ff,v
 .bee-svg .wing{animation:flap .12s linear infinite alternate;transform-origin:30px 22px}
 @keyframes flap{to{transform:scaleY(.6)}}
 @keyframes fly{0%{transform:translate(0,0) rotate(-6deg)}25%{transform:translate(150px,-10px) rotate(6deg)}50%{transform:translate(170px,60px) scaleX(-1)}75%{transform:translate(10px,40px) scaleX(-1)}100%{transform:translate(0,0)}}
-.capy-svg .eyes-happy,.capy-svg .mouth-o{display:none}
+.capy-svg .eyes-happy,.capy-svg .eyes-sleepy,.capy-svg .mouth-o{display:none}
 .happy .capy-svg .eyes-open{display:none}
 .happy .capy-svg .eyes-happy{display:inline}
+.sleepy .capy-svg .eyes-open,.sleepy .capy-svg .eyes-happy{display:none}
+.sleepy .capy-svg .eyes-sleepy{display:inline}
 .listen .capy-svg .mouth-smile{display:none}
 .listen .capy-svg .mouth-o{display:inline}
 .capy-svg .yuzu{animation:bob 3s ease-in-out infinite;transform-origin:100px 30px}
 @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px) rotate(4deg)}}
 .happy .capy-svg{animation:hop .6s ease 2}
 @keyframes hop{50%{transform:translateY(-10px)}}
+.pet-target{position:relative;border:0;background:transparent;padding:0;display:block;touch-action:none;user-select:none;-webkit-user-select:none}
+.mascot-mini.pet-target{width:72px;height:62px}
+.pet-target:focus-visible{outline:3px solid var(--pink-2);outline-offset:2px;border-radius:18px}
+.pet-count{position:absolute;right:-2px;bottom:-2px;background:#fff;color:var(--pink-3);border-radius:999px;font-size:.68rem;font-weight:800;line-height:1;padding:3px 6px;box-shadow:var(--shadow);pointer-events:none}
+.mascot-big .pet-count{right:22px;bottom:10px;font-size:.8rem}
+.pet-target.petting .capy-svg{animation:wiggle .42s ease}
+@keyframes wiggle{0%{transform:rotate(0)}30%{transform:rotate(-9deg) translateY(-3px)}70%{transform:rotate(8deg) translateY(-1px)}100%{transform:rotate(0)}}
+.pet-heart{position:absolute;top:6%;z-index:4;pointer-events:none;font-size:1.15rem;line-height:1;animation:petHeart .9s ease-out forwards}
+@keyframes petHeart{0%{transform:translate(-50%,0) scale(.55);opacity:1}100%{transform:translate(-50%,-46px) scale(1.15);opacity:0}}
+.kapi-wrap{position:relative;flex:0 0 auto}
+.pet-mute{position:absolute;top:-6px;right:-8px;z-index:2;width:28px;height:28px;min-height:28px;padding:0;border:0;border-radius:999px;background:#fff;box-shadow:var(--shadow);font-size:.8rem;line-height:1}
+.pet-mute[aria-pressed="true"]{background:#f6eef2}
+.pet-hint{margin:0;font-weight:800;color:var(--pink-3);font-size:.9rem}
 .bubble{background:var(--sun);border-radius:20px;padding:12px 14px;margin:6px 0 0;font-weight:700;position:relative}
 .bubble span{font-weight:600;color:var(--muted);font-size:.88rem}
 .bubble::before{content:"";position:absolute;top:-10px;left:50%;margin-left:-10px;border:10px solid transparent;border-top:0;border-bottom-color:var(--sun)}

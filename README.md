@@ -3,6 +3,8 @@
 A cute, static web app for practising **German pronunciation** with
 **Azure Speech Pronunciation Assessment (de-DE)**, made for Khawla.
 
+Kapi, the capybara in the header and on the practice card, can be tapped or stroked. Hearts, a squint, and a little chirp follow. The speaker button on Kapi mutes that chirp. The pet count and mute are part of that person's progress and sync with everything else.
+
 ## Files
 | File | Purpose |
 |---|---|

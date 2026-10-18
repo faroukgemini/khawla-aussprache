@@ -14,6 +14,44 @@
 
   const norm = (w) => String(w || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
 
+  function emptyPet() {
+    return { count: 0, countAt: 0, mute: false, muteAt: 0 };
+  }
+
+  function readPet(src) {
+    const pet = (src && src.pet) || {};
+    return {
+      count: Math.max(0, Math.floor(Number(pet.count) || 0)),
+      countAt: Math.max(0, Number(pet.countAt) || 0),
+      mute: !!pet.mute,
+      muteAt: Math.max(0, Number(pet.muteAt) || 0),
+    };
+  }
+
+  function mergePet(local, remote, clearedAt) {
+    const keep = (pet) => {
+      if (!clearedAt) return pet;
+      return {
+        count: pet.countAt > clearedAt ? pet.count : 0,
+        countAt: pet.countAt > clearedAt ? pet.countAt : 0,
+        mute: pet.muteAt > clearedAt ? pet.mute : false,
+        muteAt: pet.muteAt > clearedAt ? pet.muteAt : 0,
+      };
+    };
+    const a = keep(readPet(local));
+    const b = keep(readPet(remote));
+    const countSide = a.count === b.count
+      ? ((a.countAt || 0) >= (b.countAt || 0) ? a : b)
+      : (a.count > b.count ? a : b);
+    const muteSide = (a.muteAt || 0) >= (b.muteAt || 0) ? a : b;
+    return {
+      count: countSide.count,
+      countAt: countSide.countAt,
+      mute: muteSide.mute,
+      muteAt: muteSide.muteAt,
+    };
+  }
+
   function emptyProgress() {
     return {
       schema: 2,
@@ -22,6 +60,7 @@
       reviews: {},
       cursor: null,
       showTrans: { value: true, at: 0 },
+      pet: emptyPet(),
       updatedAt: 0,
     };
   }
@@ -122,6 +161,7 @@ function mergeProgress(local, remote) {
       showTrans,
       days: recomputeDays(attempts),
       clearedAt,
+      pet: mergePet(A, B, clearedAt),
       updatedAt: Math.max(A.updatedAt || 0, B.updatedAt || 0),
     };
   }
@@ -134,6 +174,7 @@ function mergeProgress(local, remote) {
       reviews: x.reviews || {},
       cursor: x.cursor || null,
       showTrans: x.showTrans || { value: true, at: 0 },
+      pet: readPet(x),
       clearedAt: x.clearedAt || 0,
     });
   }
@@ -354,6 +395,7 @@ function mergeCatalog(a, b) {
     ATTEMPT_CAP,
     norm,
     emptyProgress,
+    readPet,
     startOfDay,
     addDays,
     dayKey,

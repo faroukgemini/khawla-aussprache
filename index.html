@@ -45,6 +45,10 @@
           <path d="M68 78 q8 -10 16 0"/>
           <path d="M116 78 q8 -10 16 0"/>
         </g>
+        <g class="eyes-sleepy" fill="none" stroke="#3b2a20" stroke-width="4" stroke-linecap="round">
+          <path d="M68 78 q8 7 16 0"/>
+          <path d="M116 78 q8 7 16 0"/>
+        </g>
         <ellipse cx="62" cy="98" rx="10" ry="6" fill="#ff9fb8" opacity=".75"/>
         <ellipse cx="138" cy="98" rx="10" ry="6" fill="#ff9fb8" opacity=".75"/>
         <ellipse cx="90" cy="98" rx="4" ry="5" fill="#6d4a33"/>
@@ -115,8 +119,12 @@
   <div class="app" id="app" hidden>
     <header class="topbar">
       <div class="hello">
-        <div class="mascot-mini" id="mascotMini" aria-hidden="true">
-          <svg class="capy-svg"><use href="#capy"/></svg>
+        <div class="kapi-wrap">
+          <button type="button" class="mascot-mini pet-target" id="mascotMini" aria-label="Kapi streicheln">
+            <svg class="capy-svg"><use href="#capy"/></svg>
+            <span class="pet-count" id="petCount" aria-live="polite">0</span>
+          </button>
+          <button type="button" class="pet-mute" id="petMute" aria-pressed="false" aria-label="Kapi-Ton an" title="Kapi-Ton">🔊</button>
         </div>
         <div>
           <h1 id="helloTitle">Hallo!</h1>
@@ -234,10 +242,12 @@
           </article>
 
           <article class="card empty-card" id="emptyCard">
-            <div class="mascot-big" id="mascotBig" aria-hidden="true">
+            <button type="button" class="mascot-big pet-target" id="mascotBig" aria-label="Kapi streicheln">
               <svg class="capy-svg"><use href="#capy"/></svg>
               <svg class="bee-svg"><use href="#bee"/></svg>
-            </div>
+              <span class="pet-count">0</span>
+            </button>
+            <p class="pet-hint">Streichle mich · Pet me</p>
             <p class="bubble" id="bubble">Hör dir den Satz an, dann drück auf das Mikro. Du schaffst das! 💛<br><span>Listen first, then tap the mic. You've got this!</span></p>
           </article>
         </section>
