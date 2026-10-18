@@ -86,6 +86,7 @@ function loadProgress(id) {
   let guideIndex = 0;
   let guideOpen = false;
   let openUnitId = null;
+  const GUIDE_VERSION = 2;
   const GUIDE = [
     { sel: "#sentenceCard", key: "guide.sentence", view: "practice" },
     { sel: "#recordBtn", key: "guide.record", view: "practice" },
@@ -221,7 +222,7 @@ function loadProgress(id) {
     const layer = $("#guide");
     if (layer) layer.hidden = true;
     if (session) {
-      progress.guide = { done: true, at: Date.now() };
+      progress.guide = { done: true, at: Date.now(), seenVersion: GUIDE_VERSION };
       saveProgress(session, progress);
       schedulePush();
     }
@@ -231,7 +232,7 @@ function loadProgress(id) {
     if (!session || guideOpen) return;
     if ($("#app").hidden) return;
     if (!$("#loveModal").hidden || !$("#faroukModal").hidden) return;
-    if (progress.guide && progress.guide.done) return;
+    if ((L.readGuide(progress).seenVersion || 0) >= GUIDE_VERSION) return;
     showGuideStep(0);
   }
 
@@ -1938,12 +1939,7 @@ function loadProgress(id) {
       }
       renderKhawla();
     };
-    $("#showGuide").onclick = () => {
-      progress.guide = { done: false, at: Date.now() };
-      saveProgress(session, progress);
-      schedulePush();
-      showGuideStep(0);
-    };
+    $("#showGuide").onclick = () => showGuideStep(0);
     window.addEventListener("hashchange", () => { if (session && !guideOpen) showView(viewFromHash()); });
     document.addEventListener("visibilitychange", () => { if (session) syncNow().catch(() => {}); });
     window.addEventListener("online", () => { if (session) syncNow().catch(() => {}); });

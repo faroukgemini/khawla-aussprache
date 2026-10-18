@@ -5,7 +5,7 @@ A cute, static web app for practising **German pronunciation** with
 
 Kapi, the capybara in the header and on the practice card, can be tapped or stroked. Hearts, a squint, and a little chirp follow. The speaker button on Kapi mutes that chirp. The pet count and mute are part of that person's progress and sync with everything else.
 
-The interface language is German or English. The DE/EN switch sits on the login card and in the header. Khawla's default is English until she picks one; the choice is stored per person and syncs with the rest of their progress. Practice sentences stay German. The first time someone logs in, Kapi walks them through the screen; **Show guide again** is under More. All interface strings live in `i18n.js` (`de` and `en`). To add a language later (French, Arabic, and so on), copy the `en` object, translate the values, and add a `data-lang` button inside each `.lang-switch`.
+The interface language is German or English. The DE/EN switch sits on the login card and in the header. Khawla's default is English until she picks one; the choice is stored per person and syncs with the rest of their progress. Practice sentences stay German. The first time someone logs in, Kapi walks them through the screen. When that walkthrough is updated, everyone sees the new one once, including people who already finished or skipped the old one. **Show guide again** is under More. All interface strings live in `i18n.js` (`de` and `en`). To add a language later (French, Arabic, and so on), copy the `en` object, translate the values, and add a `data-lang` button inside each `.lang-switch`.
 
 ## Files
 | File | Purpose |

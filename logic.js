@@ -60,7 +60,10 @@
 
   function readGuide(src) {
     const g = src && src.guide;
-    return { done: !!(g && g.done), at: Math.max(0, Number(g && g.at) || 0) };
+    const done = !!(g && g.done);
+    let seenVersion = Math.max(0, Math.floor(Number(g && g.seenVersion) || 0));
+    if (!seenVersion && done) seenVersion = 1;
+    return { done: done || seenVersion > 0, at: Math.max(0, Number(g && g.at) || 0), seenVersion };
   }
 
   function laterOf(a, b) {
@@ -82,11 +85,12 @@
     let a = readGuide(local);
     let b = readGuide(remote);
     if (clearedAt) {
-      if (a.at <= clearedAt) a = { done: false, at: 0 };
-      if (b.at <= clearedAt) b = { done: false, at: 0 };
+      if (a.at <= clearedAt) a = { done: false, at: 0, seenVersion: 0 };
+      if (b.at <= clearedAt) b = { done: false, at: 0, seenVersion: 0 };
     }
     const win = laterOf(a, b);
-    return { done: !!win.done, at: win.at || 0 };
+    const seenVersion = Math.max(a.seenVersion || 0, b.seenVersion || 0);
+    return { done: seenVersion > 0 || !!win.done, at: Math.max(a.at || 0, b.at || 0), seenVersion };
   }
 
   function emptyProgress() {
@@ -99,7 +103,7 @@
       showTrans: { value: true, at: 0 },
       pet: emptyPet(),
       uiLang: { value: "", at: 0 },
-      guide: { done: false, at: 0 },
+      guide: { done: false, at: 0, seenVersion: 0 },
       updatedAt: 0,
     };
   }
