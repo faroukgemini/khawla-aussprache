@@ -5,12 +5,15 @@ A cute, static web app for practising **German pronunciation** with
 
 Kapi, the capybara in the header and on the practice card, can be tapped or stroked. Hearts, a squint, and a little chirp follow. The speaker button on Kapi mutes that chirp. The pet count and mute are part of that person's progress and sync with everything else.
 
+The interface language is German or English. The DE/EN switch sits on the login card and in the header. Khawla's default is English until she picks one; the choice is stored per person and syncs with the rest of their progress. Practice sentences stay German. The first time someone logs in, Kapi walks them through the screen; **Show guide again** is under More. All interface strings live in `i18n.js` (`de` and `en`). To add a language later (French, Arabic, and so on), copy the `en` object, translate the values, and add a `data-lang` button inside each `.lang-switch`.
+
 ## Files
 | File | Purpose |
 |---|---|
 | `index.html` | App shell, mascot, login, practice / review / progress / settings |
 | `styles.css` | Pastel, mobile-first styles |
-| `app.js` | Practice, Azure scoring, two users, sync, backup |
+| `i18n.js` | Interface strings (`de` / `en`). Practice sentences are not in here |
+| `app.js` | Practice, Azure scoring, two users, sync, backup, guide |
 | `logic.js` | Unlock rule, review schedule, merge, weak sounds |
 | `sentences.js` | 30 themed units (300 sentences, A1–B1) and sound tips |
 | `firebase/firestore.rules` | Rules to paste into Firebase (only Farouk and Khawla) |

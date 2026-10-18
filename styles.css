@@ -31,8 +31,9 @@ button{font:inherit;color:inherit;cursor:pointer;touch-action:manipulation}
 /* ---------- top bar ---------- */
 .topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap}
 .hello{display:flex;align-items:center;gap:10px;min-width:0}
-.hello h1{font-family:var(--font-head);font-size:1.6rem;line-height:1.05;margin:0;color:var(--pink-3)}
-.hello .sub{margin:2px 0 0;font-size:.85rem;color:var(--muted)}
+.hello h1{font-family:var(--font-head);font-size:1.6rem;line-height:1.05;margin:0;color:var(--pink-3);overflow-wrap:anywhere}
+.hello .sub{margin:2px 0 0;font-size:.85rem;color:var(--muted);overflow-wrap:anywhere}
+.hello > div{min-width:0}
 .wave{display:inline-block;animation:wave 2.4s ease-in-out infinite;transform-origin:70% 70%}
 @keyframes wave{0%,60%,100%{transform:rotate(0)}10%,30%{transform:rotate(16deg)}20%,40%{transform:rotate(-8deg)}}
 .mascot-mini{width:56px;height:48px;flex:0 0 auto}
@@ -250,9 +251,26 @@ body.thinking .record-btn{background:radial-gradient(circle at 35% 30%,#e0d7ff,v
 .bottom-nav{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom));z-index:30;
   display:flex;gap:4px;background:rgba(255,255,255,.92);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
   padding:6px;border-radius:999px;box-shadow:0 10px 30px rgba(74,52,69,.15);width:min(560px,calc(100% - 24px))}
-.tab{flex:1;border:0;background:transparent;border-radius:999px;padding:8px 6px;font-weight:800;font-size:.78rem;display:flex;flex-direction:column;align-items:center;gap:1px;color:var(--muted);min-height:52px}
-.tab span{font-size:1.25rem}
+.tab{flex:1;border:0;background:transparent;border-radius:999px;padding:8px 4px;font-weight:800;font-size:.72rem;display:flex;flex-direction:column;align-items:center;gap:1px;color:var(--muted);min-height:52px;min-width:0}
+.tab .tab-ico{font-size:1.2rem;line-height:1}
+.tab .tab-label{font-size:.68rem;line-height:1.1;max-width:100%;text-align:center;overflow-wrap:anywhere}
 .tab.active{background:var(--pink);color:var(--pink-3)}
+.lang-switch{display:inline-flex;background:#fff;border-radius:999px;padding:3px;box-shadow:var(--shadow);flex:0 0 auto}
+.lang-switch button{border:0;background:transparent;border-radius:999px;min-height:32px;min-width:36px;padding:2px 8px;font-weight:800;font-size:.75rem}
+.lang-switch button.on{background:var(--pink);color:var(--pink-3)}
+.gate-card{position:relative}
+.gate .lang-switch{position:absolute;top:12px;right:12px;z-index:2}
+.chips{flex-wrap:wrap;justify-content:flex-end}
+.next-bar .btn{font-size:.82rem;line-height:1.15;padding:10px 8px}
+.tools .btn{font-size:.82rem;padding:10px 8px}
+@media (max-width:420px){
+  .hello h1{font-size:1.28rem}
+  .chip{padding:6px 8px;font-size:.82rem}
+  .next-bar{gap:6px}
+  .next-bar .btn{padding:10px 6px;font-size:.78rem}
+  .tools{gap:6px}
+  .app{padding-left:12px;padding-right:12px}
+}
 
 /* ---------- misc ---------- */
 #confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:60}
@@ -267,7 +285,7 @@ body.thinking .record-btn{background:radial-gradient(circle at 35% 30%,#e0d7ff,v
   .record-wrap,.record-btn{width:112px;height:112px}
   .mic-icon{width:50px;height:50px}
   .record-card{padding-top:20px}
-  .next-bar .btn{padding:10px 8px;font-size:.86rem}
+  .next-bar .btn,.tools .btn{padding:10px 6px;font-size:.76rem;white-space:normal;text-align:center;line-height:1.15}
 }
 
 /* ---------- gate & love ---------- */
@@ -281,6 +299,15 @@ body.thinking .record-btn{background:radial-gradient(circle at 35% 30%,#e0d7ff,v
 .love-arena{position:relative;height:200px;margin-top:12px;border-radius:22px;background:linear-gradient(180deg,#fff,#fff0f6);overflow:hidden;touch-action:none}
 .love-no{position:absolute;left:58%;top:36%;min-width:96px;z-index:2;touch-action:none}
 .gate .mascot-big{margin-bottom:0}
+.guide{position:fixed;inset:0;z-index:75}
+.guide-blocker{position:absolute;inset:0}
+.guide-hole{position:fixed;border-radius:18px;box-shadow:0 0 0 9999px rgba(74,52,69,.55);pointer-events:none;z-index:76}
+.guide-card{position:fixed;z-index:77;width:min(340px,calc(100vw - 24px));background:#fff;border-radius:22px;box-shadow:var(--shadow);padding:12px 14px 12px;max-height:min(46vh,320px);overflow:auto}
+.guide-kapi{width:72px;height:60px;margin:0 auto 4px}
+.guide-card p{margin:6px 0 10px;font-weight:700;line-height:1.35;overflow-wrap:anywhere}
+.guide-actions{display:flex;align-items:center;gap:8px}
+.guide-actions .btn{flex:1;min-height:42px;padding:8px 10px}
+.guide-count{font-weight:800;color:var(--muted);font-size:.8rem;flex:0 0 auto}
 .gate .mascot-mini{width:84px;height:72px;margin:0 auto}
 
 .next-bar{display:flex;gap:8px;margin-bottom:8px}
