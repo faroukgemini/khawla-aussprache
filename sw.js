@@ -1,8 +1,9 @@
 /* Simple offline cache for the app shell. Speech scoring itself always needs internet (Azure). */
-const CACHE = "khawla-aussprache-v1";
+const CACHE = "khawla-aussprache-v2";
 const ASSETS = [
-  "./", "./index.html", "./styles.css", "./app.js", "./sentences.js", "./manifest.webmanifest",
-  "./icons/icon.svg", "./icons/icon-192.png", "./icons/icon-512.png", "./vendor/speech-sdk-1.52.0.min.js",
+  "./", "./index.html", "./styles.css", "./app.js", "./logic.js", "./sentences.js", "./manifest.webmanifest",
+  "./icons/icon.svg", "./icons/icon-192.png", "./icons/icon-512.png",
+  "./vendor/speech-sdk-1.52.0.min.js", "./vendor/qrcode.js",
 ];
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));

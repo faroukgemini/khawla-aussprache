@@ -1,0 +1,40 @@
+rules_version = '2';
+// Khawla Aussprache — paste these rules in Firebase Console → Firestore → Rules → Publish.
+// Only the two Email/Password users below can touch data.
+// Create them in Authentication with the SAME password (the app's sync password):
+//   farouk@aussprache.app
+//   khawla@aussprache.app
+// Farouk (admin) can read and write both progress docs and the shared catalog.
+// Khawla can read and write only users/khawla, and can read shared/catalog.
+// There is no public read. The Firebase web apiKey is not a secret; these rules are.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+    function email() {
+      return request.auth.token.email;
+    }
+    function isFarouk() {
+      return signedIn() && email() == "farouk@aussprache.app";
+    }
+    function isKhawla() {
+      return signedIn() && email() == "khawla@aussprache.app";
+    }
+
+    match /users/{userId} {
+      allow read: if isFarouk() || (isKhawla() && userId == "khawla");
+      allow create, update: if isFarouk() || (isKhawla() && userId == "khawla");
+      allow delete: if isFarouk();
+    }
+
+    match /shared/{docId} {
+      allow read: if isFarouk() || isKhawla();
+      allow create, update, delete: if isFarouk();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
