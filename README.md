@@ -3,6 +3,10 @@
 A cute, static web app for practising **German pronunciation** with
 **Azure Speech Pronunciation Assessment (de-DE)**, made for Khawla.
 
+## Preview branch (`cursor/capy-petting-2789`)
+
+This branch makes Kapi petable and is **not** the live site. `PREVIEW_BUILD` in `app.js` is `true`: every `localStorage` key is stored as `preview.` + the real key, the old-data migration does not run, Firebase sign-in and writes are skipped, and the service worker is not registered. Pet count and the pet-sound mute live in that preview namespace only. **Turn `PREVIEW_BUILD` off before any merge to `main`.** The Pages workflow still deploys only from `main`.
+
 ## Files
 | File | Purpose |
 |---|---|

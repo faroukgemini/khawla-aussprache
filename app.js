@@ -4,6 +4,10 @@
   "use strict";
 
   const L = window.AusspracheLogic;
+  /* Preview branch only. Turn this off before merging to main, or the live
+     site would keep the preview storage prefix and skip sync. */
+  const PREVIEW_BUILD = true;
+  const storeKey = (k) => (PREVIEW_BUILD ? "preview." + k : k);
   const FB_VERSION = "12.4.0";
   const EMAIL = { farouk: "farouk@aussprache.app", khawla: "khawla@aussprache.app" };
   const LS_SETTINGS = "aussprache.settings.v1";
@@ -18,11 +22,11 @@
 
   const loadRaw = (k, d) => {
     try {
-      const v = JSON.parse(localStorage.getItem(k) || "null");
+      const v = JSON.parse(localStorage.getItem(storeKey(k)) || "null");
       return v == null ? d : v;
     } catch { return d; }
   };
-  const saveRaw = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+  const saveRaw = (k, v) => { try { localStorage.setItem(storeKey(k), JSON.stringify(v)); } catch {} };
 
   function defaultSettings() {
     return {
@@ -83,7 +87,8 @@ function loadProgress(id) {
   }
 
   function migrate() {
-    if (localStorage.getItem(LS_MIGRATED)) return;
+    if (PREVIEW_BUILD) return;
+    if (localStorage.getItem(storeKey(LS_MIGRATED))) return;
     const oldS = loadRaw("khawla.settings.v1", null);
     const oldP = loadRaw("khawla.progress.v1", null);
     const oldPos = loadRaw("khawla.position.v1", null);
@@ -97,14 +102,14 @@ function loadProgress(id) {
       saveSettings();
     }
     const hasOld = oldP && ((oldP.best && Object.keys(oldP.best).length) || (oldP.attempts && oldP.attempts.length));
-    if (hasOld && !localStorage.getItem(userKey("khawla"))) {
+    if (hasOld && !localStorage.getItem(storeKey(userKey("khawla")))) {
       const prog = L.migrateLegacy(oldP, window.LEGACY || [], window.UNITS || []);
       if (oldS && typeof oldS.showTrans === "boolean") prog.showTrans = { value: oldS.showTrans, at: 1 };
       const cur = L.cursorFromLegacy(oldPos, window.LEGACY || [], window.UNITS || []);
       if (cur) prog.cursor = cur;
       saveProgress("khawla", prog);
     }
-    localStorage.setItem(LS_MIGRATED, "1");
+    localStorage.setItem(storeKey(LS_MIGRATED), "1");
   }
 
   function fromB64Url(s) {
@@ -192,6 +197,163 @@ function loadProgress(id) {
       if (!el) return;
       el.classList.remove("happy", "listen");
       if (m) { void el.offsetWidth; el.classList.add(m); }
+    });
+  }
+
+  /* ---------------- petting (preview) ---------------- */
+  const LS_PET = "aussprache.pet.v1";
+  const PET_SLEEPY = 18;
+  let pet = { count: 0, mute: false };
+  let petAudio = null;
+  let lastPetAt = 0;
+
+  function loadPet() {
+    const p = loadRaw(LS_PET, null) || {};
+    pet = { count: Math.max(0, Number(p.count) || 0), mute: !!p.mute };
+  }
+  function savePet() { saveRaw(LS_PET, { count: pet.count, mute: pet.mute }); }
+  function renderPet() {
+    const label = (pet.count >= PET_SLEEPY ? "💤 " : "") + pet.count;
+    $$(".pet-count").forEach((el) => { el.textContent = label; });
+    ["#mascotMini", "#mascotBig"].forEach((s) => {
+      const el = $(s);
+      if (el) el.classList.toggle("sleepy", pet.count >= PET_SLEEPY);
+    });
+    const mute = $("#petMute");
+    if (mute) {
+      mute.setAttribute("aria-pressed", pet.mute ? "true" : "false");
+      mute.textContent = pet.mute ? "🔇 Stumm" : "🔊 Ton";
+    }
+    const banner = $("#previewBanner");
+    if (banner) banner.hidden = !PREVIEW_BUILD;
+  }
+  function spawnHeart(host) {
+    const hearts = host.querySelectorAll(".pet-heart");
+    if (hearts.length >= 8) hearts[0].remove();
+    const e = document.createElement("span");
+    e.className = "pet-heart";
+    e.setAttribute("aria-hidden", "true");
+    e.textContent = pet.count >= PET_SLEEPY ? "💤" : pick(["💖", "💗", "💛", "✨"]);
+    e.style.left = (28 + Math.random() * 44) + "%";
+    host.appendChild(e);
+    setTimeout(() => e.remove(), 950);
+  }
+  function chirp() {
+    if (pet.mute) return;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      if (!petAudio) petAudio = new AC();
+      if (petAudio.state === "suspended") petAudio.resume().catch(() => {});
+      const t = petAudio.currentTime;
+      const o = petAudio.createOscillator();
+      const g = petAudio.createGain();
+      o.type = "sine";
+      o.frequency.setValueAtTime(640, t);
+      o.frequency.exponentialRampToValueAtTime(920, t + 0.11);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.035, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+      o.connect(g);
+      g.connect(petAudio.destination);
+      o.start(t);
+      o.stop(t + 0.2);
+    } catch { /* autoplay or missing audio */ }
+  }
+  function reactPet(host, opts) {
+    if (!host) return;
+    const count = !opts || opts.count !== false;
+    const now = performance.now();
+    if (now - lastPetAt < 140) return;
+    lastPetAt = now;
+    const before = pet.count;
+    if (count) {
+      pet.count += 1;
+      savePet();
+    }
+    host.classList.remove("petting");
+    void host.offsetWidth;
+    host.classList.add("petting", "happy");
+    spawnHeart(host);
+    chirp();
+    renderPet();
+    if (count && before < PET_SLEEPY && pet.count >= PET_SLEEPY) toast("Kapi ist zufrieden und wird schläfrig. 💤");
+    clearTimeout(host._petTimer);
+    host._petTimer = setTimeout(() => host.classList.remove("petting"), 460);
+  }
+  function capyCheer() {
+    ["#mascotMini", "#mascotBig"].forEach((s) => {
+      const el = $(s);
+      if (!el || el.closest("[hidden]")) return;
+      el.classList.add("happy");
+      el.classList.remove("petting");
+      void el.offsetWidth;
+      el.classList.add("petting");
+      spawnHeart(el);
+      clearTimeout(el._petTimer);
+      el._petTimer = setTimeout(() => el.classList.remove("petting"), 460);
+    });
+    chirp();
+  }
+  function bindPets() {
+    if (bindPets.done) return;
+    bindPets.done = true;
+    loadPet();
+    renderPet();
+    const mute = $("#petMute");
+    if (mute) mute.onclick = () => { pet.mute = !pet.mute; savePet(); renderPet(); if (!pet.mute) chirp(); };
+    $$(".pet-target").forEach((el) => {
+      let down = false;
+      let moved = false;
+      let lx = 0;
+      let ly = 0;
+      let trail = 0;
+      const stroked = (e) => {
+        const dx = e.clientX - lx;
+        const dy = e.clientY - ly;
+        lx = e.clientX;
+        ly = e.clientY;
+        trail += Math.hypot(dx, dy);
+        if (trail < 12) return false;
+        trail = 0;
+        return true;
+      };
+      el.addEventListener("pointerenter", (e) => {
+        lx = e.clientX;
+        ly = e.clientY;
+        trail = 0;
+        el._hoverReady = true;
+      });
+      el.addEventListener("pointerleave", () => { el._hoverReady = false; down = false; trail = 0; });
+      el.addEventListener("pointerdown", (e) => {
+        if (e.pointerType === "mouse" && e.button !== 0) return;
+        down = true;
+        moved = false;
+        trail = 0;
+        el._fromPointer = true;
+        lx = e.clientX;
+        ly = e.clientY;
+        try { el.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+      });
+      el.addEventListener("pointermove", (e) => {
+        if (e.pointerType === "mouse" && !down) {
+          if (!el._hoverReady) { lx = e.clientX; ly = e.clientY; el._hoverReady = true; trail = 0; return; }
+          if (stroked(e)) reactPet(el);
+          return;
+        }
+        if (!down) return;
+        if (stroked(e)) { moved = true; reactPet(el); }
+      });
+      el.addEventListener("pointerup", () => {
+        if (!down) return;
+        down = false;
+        if (!moved) reactPet(el);
+      });
+      el.addEventListener("pointercancel", () => { down = false; });
+      el.addEventListener("click", () => {
+        if (el._fromPointer) { el._fromPointer = false; return; }
+        reactPet(el);
+      });
     });
   }
 
@@ -476,6 +638,10 @@ function loadProgress(id) {
   function renderSyncStatus() {
     const el = $("#syncStatus");
     if (!el || !session) return;
+    if (PREVIEW_BUILD) {
+      el.textContent = "Vorschau: kein Cloud-Sync. Echter Fortschritt bleibt unberührt.";
+      return;
+    }
     if (!firebaseConfigured()) {
       el.textContent = isAdmin()
         ? "Cloud-Sync ist noch nicht eingerichtet."
@@ -929,6 +1095,7 @@ function loadProgress(id) {
       confetti(st >= 3 ? 140 : 80);
       floatEmojis(st >= 3 ? ["🌟", "🐹", "🐝", "💖"] : ["⭐", "🐝"]);
     } else if (st >= 1) setMood("happy");
+    if (pron >= 80) capyCheer();
     const rev = progress.reviews[c.id];
     if (rev && rev.due) {
       const when = new Date(rev.due);
@@ -1050,6 +1217,7 @@ function loadProgress(id) {
     await fbReady;
   }
   async function signInRole(role) {
+    if (PREVIEW_BUILD) return;
     await ensureFirebase();
     const email = EMAIL[role];
     if (fbAuth.currentUser && fbAuth.currentUser.email === email) return;
@@ -1058,11 +1226,13 @@ function loadProgress(id) {
   }
   function authRole() { return session === "farouk" ? "farouk" : "khawla"; }
   async function fetchRemote(userId) {
+    if (PREVIEW_BUILD) return null;
     await signInRole(authRole());
     const snap = await fbDb.collection("users").doc(userId).get();
     return snap.exists ? snap.data() : null;
   }
   async function writeRemote(userId, prog) {
+    if (PREVIEW_BUILD) return 0;
     await signInRole(authRole());
     const data = JSON.parse(JSON.stringify({
       schema: 2,
@@ -1090,6 +1260,7 @@ function loadProgress(id) {
     return m.slice(0, 180);
   }
   async function pullCatalog() {
+    if (PREVIEW_BUILD) return;
     const snap = await fbDb.collection("shared").doc("catalog").get();
     const remote = snap.exists ? (snap.data().units || []) : [];
     const merged = L.mergeCatalog(catalog.customUnits, remote);
@@ -1099,11 +1270,13 @@ function loadProgress(id) {
     if (changed && isAdmin()) await fbDb.collection("shared").doc("catalog").set({ units: merged, updatedAt: Date.now() });
   }
   async function pushCatalog() {
+    if (PREVIEW_BUILD) return;
     if (!firebaseConfigured() || !isAdmin()) return;
     await signInRole("farouk");
     await pullCatalog();
   }
   async function syncUser(userId, applyCursor) {
+    if (PREVIEW_BUILD) return;
     const remote = await fetchRemote(userId);
     const local = loadProgress(userId);
     const merged = L.mergeProgress(local, remote);
@@ -1122,6 +1295,7 @@ function loadProgress(id) {
     setSyncMeta(userId, { ok: true, at: Date.now(), remoteUpdatedAt: (remote && remote.updatedAt) || 0, error: "" });
   }
   async function syncNow() {
+    if (PREVIEW_BUILD) { renderSyncStatus(); return; }
     if (!session || !firebaseConfigured()) { renderSyncStatus(); return; }
     if (syncing) return;
     syncing = true;
@@ -1138,6 +1312,7 @@ function loadProgress(id) {
     } finally { syncing = false; }
   }
   function schedulePush() {
+    if (PREVIEW_BUILD) return;
     clearTimeout(syncTimer);
     syncTimer = setTimeout(() => { syncNow().catch(() => {}); }, 1200);
   }
@@ -1339,7 +1514,7 @@ function loadProgress(id) {
     syncNow().catch(() => {});
   }
   function logout() {
-    localStorage.removeItem(LS_SESSION);
+    localStorage.removeItem(storeKey(LS_SESSION));
     session = null;
     $("#app").hidden = true;
     document.body.removeAttribute("data-role");
@@ -1577,19 +1752,22 @@ function loadProgress(id) {
 
   function init() {
     migrate();
-    consumeSetup();
+    if (!PREVIEW_BUILD) consumeSetup();
     if ("speechSynthesis" in window) speechSynthesis.getVoices();
     bindGate();
+    bindPets();
     const saved = loadRaw(LS_SESSION, null);
     if (saved && (saved.user === "khawla" || saved.user === "farouk")) enterApp(saved.user);
-    if ("serviceWorker" in navigator && window.isSecureContext && !/[?&]nosw/.test(location.search)) {
+    if (!PREVIEW_BUILD && "serviceWorker" in navigator && window.isSecureContext && !/[?&]nosw/.test(location.search)) {
       navigator.serviceWorker.register("sw.js").catch((e) => console.warn("SW", e));
     }
   }
   init();
 
   window.__khawla = {
-    simulate, g2p, moveNo, nearNo,
+    simulate, g2p, moveNo, nearNo, PREVIEW_BUILD, storeKey,
+    cheer: capyCheer,
+    get petState() { return { count: pet.count, mute: pet.mute }; },
     get units() { return units(); },
     get progress() { return progress; },
     get settings() { return settings; },
