@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Khawlas Aussprache-Garten 🐹🐝</title>
+  <meta name="description" content="Deutsche Aussprache üben – German pronunciation practice for Khawla" />
+  <meta name="theme-color" content="#ffd6e7" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <canvas id="confetti" aria-hidden="true"></canvas>
+
+  <!-- Reusable mascot (capybara with a yuzu + a little bee) -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="capy" viewBox="0 0 200 170">
+        <ellipse cx="100" cy="160" rx="62" ry="8" fill="#000" opacity=".07"/>
+        <ellipse cx="100" cy="138" rx="68" ry="30" fill="#b9814f"/>
+        <ellipse cx="62" cy="156" rx="14" ry="8" fill="#a06c3e"/>
+        <ellipse cx="138" cy="156" rx="14" ry="8" fill="#a06c3e"/>
+        <g class="capy-ears">
+          <ellipse class="ear-l" cx="58" cy="42" rx="12" ry="10" fill="#9b6738"/>
+          <ellipse class="ear-r" cx="142" cy="42" rx="12" ry="10" fill="#9b6738"/>
+          <ellipse cx="58" cy="43" rx="6" ry="5" fill="#e7a7a0"/>
+          <ellipse cx="142" cy="43" rx="6" ry="5" fill="#e7a7a0"/>
+        </g>
+        <rect x="42" y="34" width="116" height="104" rx="50" fill="#c9915e"/>
+        <ellipse cx="100" cy="106" rx="40" ry="26" fill="#ddb07f"/>
+        <g class="eyes-open">
+          <circle cx="76" cy="76" r="6.5" fill="#3b2a20"/>
+          <circle cx="124" cy="76" r="6.5" fill="#3b2a20"/>
+          <circle cx="78.5" cy="73.5" r="2.2" fill="#fff"/>
+          <circle cx="126.5" cy="73.5" r="2.2" fill="#fff"/>
+        </g>
+        <g class="eyes-happy" fill="none" stroke="#3b2a20" stroke-width="4" stroke-linecap="round">
+          <path d="M68 78 q8 -10 16 0"/>
+          <path d="M116 78 q8 -10 16 0"/>
+        </g>
+        <ellipse cx="62" cy="98" rx="10" ry="6" fill="#ff9fb8" opacity=".75"/>
+        <ellipse cx="138" cy="98" rx="10" ry="6" fill="#ff9fb8" opacity=".75"/>
+        <ellipse cx="90" cy="98" rx="4" ry="5" fill="#6d4a33"/>
+        <ellipse cx="110" cy="98" rx="4" ry="5" fill="#6d4a33"/>
+        <path class="mouth-smile" d="M88 112 q6 7 12 0 q6 7 12 0" fill="none" stroke="#6d4a33" stroke-width="3" stroke-linecap="round"/>
+        <ellipse class="mouth-o" cx="100" cy="116" rx="6" ry="7" fill="#6d4a33"/>
+        <!-- yuzu on head -->
+        <g class="yuzu">
+          <circle cx="100" cy="26" r="16" fill="#ffb648"/>
+          <circle cx="94" cy="21" r="4" fill="#ffd27f"/>
+          <path d="M100 11 q8 -9 16 -4 q-6 8 -16 4z" fill="#7ccf8a"/>
+        </g>
+      </symbol>
+      <symbol id="bee" viewBox="0 0 60 50">
+        <ellipse class="wing" cx="24" cy="12" rx="10" ry="12" fill="#e8f6ff" stroke="#9ccfee" stroke-width="2"/>
+        <ellipse class="wing" cx="38" cy="12" rx="10" ry="12" fill="#e8f6ff" stroke="#9ccfee" stroke-width="2"/>
+        <ellipse cx="30" cy="30" rx="20" ry="15" fill="#ffd84d" stroke="#3b2a20" stroke-width="2.5"/>
+        <path d="M24 16.5 v27 M34 15.6 v28.8" stroke="#3b2a20" stroke-width="5"/>
+        <circle cx="45" cy="27" r="2.6" fill="#3b2a20"/>
+        <path d="M10 30 l-7 0" stroke="#3b2a20" stroke-width="3" stroke-linecap="round"/>
+        <ellipse cx="44" cy="34" rx="3" ry="2" fill="#ff9fb8"/>
+      </symbol>
+      <symbol id="mic" viewBox="0 0 24 24">
+        <path fill="currentColor" d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-6a3.5 3.5 0 1 0-7 0v6A3.5 3.5 0 0 0 12 15Zm6-3.5a1 1 0 1 0-2 0 4 4 0 0 1-8 0 1 1 0 1 0-2 0 6 6 0 0 0 5 5.91V20H8.5a1 1 0 1 0 0 2h7a1 1 0 1 0 0-2H13v-2.59a6 6 0 0 0 5-5.91Z"/>
+      </symbol>
+    </defs>
+  </svg>
+
+  <div class="app">
+    <header class="topbar">
+      <div class="hello">
+        <div class="mascot-mini" id="mascotMini" aria-hidden="true">
+          <svg class="capy-svg"><use href="#capy"/></svg>
+        </div>
+        <div>
+          <h1>Hallo Khawla! <span class="wave">👋</span></h1>
+          <p class="sub" id="helloSub">Bereit für ein bisschen Deutsch? · Ready for some German?</p>
+        </div>
+      </div>
+      <div class="chips">
+        <span class="chip chip-streak" title="Tage in Folge · day streak">🔥 <b id="streakCount">0</b></span>
+        <span class="chip chip-stars" title="Sterne · stars">⭐ <b id="starCount">0</b></span>
+        <span class="chip chip-demo" id="demoBadge" hidden title="Demo-Modus: simulierte Ergebnisse">DEMO</span>
+      </div>
+    </header>
+
+    <nav class="bottom-nav" aria-label="Navigation">
+      <button class="tab active" data-view="practice"><span>🎤</span>Üben</button>
+      <button class="tab" data-view="progress"><span>🌷</span>Fortschritt</button>
+      <button class="tab" data-view="settings"><span>⚙️</span>Einstellungen</button>
+    </nav>
+
+    <!-- ============ PRACTICE ============ -->
+    <main id="view-practice" class="view active" aria-label="Üben">
+      <nav class="levels" role="tablist" aria-label="Niveau">
+        <button class="level" role="tab" data-level="A1">🌱 A1</button>
+        <button class="level" role="tab" data-level="A2">🌼 A2</button>
+        <button class="level" role="tab" data-level="B1">🌸 B1</button>
+        <button class="level" role="tab" data-level="CUSTOM">✏️ Eigener</button>
+      </nav>
+
+      <div class="practice-grid">
+        <section class="col-left">
+          <article class="card sentence-card" id="sentenceCard">
+            <div class="card-head">
+              <span class="pill" id="deckLabel">A1 · 1 / 15</span>
+              <span class="best-stars" id="bestStars" title="Bestes Ergebnis · best">☆☆☆</span>
+            </div>
+
+            <div id="deckSentence">
+              <p class="german" id="germanText" lang="de">…</p>
+              <p class="english" id="englishText" lang="en">…</p>
+            </div>
+
+            <div id="customBox" hidden>
+              <label for="customInput" class="label">Mein eigener Satz · My own sentence</label>
+              <textarea id="customInput" lang="de" rows="3" maxlength="300" placeholder="z.B. Ich liebe Capybaras und Bienen."></textarea>
+              <div class="row">
+                <button class="btn btn-soft" id="useCustom">✨ Diesen Satz üben</button>
+              </div>
+              <p class="german small" id="customActive" lang="de" hidden></p>
+            </div>
+
+            <div class="row tools">
+              <button class="btn btn-soft" id="playNormal" aria-label="Anhören">🔊 Anhören</button>
+              <button class="btn btn-soft" id="playSlow" aria-label="Langsam anhören">🐢 Langsam</button>
+              <button class="btn btn-ghost" id="toggleTrans" aria-label="Übersetzung zeigen/verstecken">🙈 EN</button>
+            </div>
+
+            <div class="nav-arrows" id="navArrows">
+              <button class="btn-round" id="prevBtn" aria-label="Vorheriger Satz">‹</button>
+              <div class="dots" id="dots"></div>
+              <button class="btn-round" id="nextBtn" aria-label="Nächster Satz">›</button>
+            </div>
+
+            <ul class="tips" id="tips"></ul>
+          </article>
+
+          <section class="card record-card">
+            <div class="record-wrap">
+              <div class="rings" aria-hidden="true"><span></span><span></span><span></span></div>
+              <button class="record-btn" id="recordBtn" aria-label="Aufnehmen · Record">
+                <svg class="mic-icon"><use href="#mic"/></svg>
+              </button>
+            </div>
+            <p class="status" id="status">Tippen &amp; sprechen · Tap &amp; speak</p>
+            <p class="hint" id="hint">Lies den Satz laut vor – ich höre zu! 🐹</p>
+          </section>
+        </section>
+
+        <section class="col-right">
+          <article class="card result-card" id="resultCard" hidden aria-live="polite">
+            <div class="result-top">
+              <div class="score-ring" id="scoreRing" style="--p:0">
+                <div class="score-inner"><b id="pronScore">0</b><small>Punkte</small></div>
+              </div>
+              <div class="result-msg">
+                <div class="earned" id="earnedStars">⭐⭐⭐</div>
+                <p class="msg-de" id="msgDe">Super!</p>
+                <p class="msg-en" id="msgEn">Great!</p>
+              </div>
+            </div>
+
+            <div class="bars" id="bars"></div>
+
+            <h3 class="h3">Deine Wörter · Your words <small>(tippen für Laute · tap for sounds)</small></h3>
+            <div class="words" id="words"></div>
+            <div class="legend">
+              <span><i class="dot good"></i>≥ 80</span>
+              <span><i class="dot ok"></i>60–79</span>
+              <span><i class="dot bad"></i>&lt; 60</span>
+              <span><i class="dot miss"></i>ausgelassen</span>
+            </div>
+            <p class="heard" id="heard"></p>
+
+            <div class="row">
+              <button class="btn btn-soft" id="againBtn">🔁 Nochmal</button>
+              <button class="btn btn-primary" id="nextAfter">Nächster Satz ➡️</button>
+            </div>
+          </article>
+
+          <article class="card empty-card" id="emptyCard">
+            <div class="mascot-big" id="mascotBig" aria-hidden="true">
+              <svg class="capy-svg"><use href="#capy"/></svg>
+              <svg class="bee-svg"><use href="#bee"/></svg>
+            </div>
+            <p class="bubble" id="bubble">Hör dir den Satz an, dann drück auf das Mikro. Du schaffst das! 💛<br><span>Listen first, then tap the mic. You've got this!</span></p>
+          </article>
+        </section>
+      </div>
+    </main>
+
+    <!-- ============ PROGRESS ============ -->
+    <main id="view-progress" class="view" aria-label="Fortschritt">
+      <section class="card">
+        <h2>Dein Fortschritt 🌷 <small>Your progress</small></h2>
+        <div class="stats">
+          <div class="stat"><span>🔥</span><b id="pStreak">0</b><small>Tage in Folge<br>day streak</small></div>
+          <div class="stat"><span>⭐</span><b id="pStars">0</b><small>Sterne<br>stars</small></div>
+          <div class="stat"><span>🎤</span><b id="pAttempts">0</b><small>Versuche<br>attempts</small></div>
+          <div class="stat"><span>💯</span><b id="pAvg">–</b><small>Ø Punkte<br>avg score</small></div>
+        </div>
+      </section>
+      <section class="card">
+        <h3 class="h3">Letzte 7 Tage · Last 7 days</h3>
+        <div class="week" id="week"></div>
+      </section>
+      <section class="card">
+        <h3 class="h3">Gemeisterte Sätze (★★+) · Mastered</h3>
+        <div id="levelProgress"></div>
+      </section>
+      <section class="card">
+        <h3 class="h3">Zuletzt geübt · Recent</h3>
+        <ul class="recent" id="recent"></ul>
+        <div class="row"><button class="btn btn-ghost danger" id="resetProgress">🗑️ Fortschritt zurücksetzen</button></div>
+      </section>
+    </main>
+
+    <!-- ============ SETTINGS ============ -->
+    <main id="view-settings" class="view" aria-label="Einstellungen">
+      <section class="card">
+        <h2>Einstellungen ⚙️ <small>Settings</small></h2>
+
+        <div class="toggle-row">
+          <div>
+            <b>Demo-Modus</b>
+            <p class="muted">Simulierte Ergebnisse, kein Azure-Schlüssel nötig. · Simulated scores, no key needed.</p>
+          </div>
+          <label class="switch"><input type="checkbox" id="demoToggle"><span></span></label>
+        </div>
+
+        <label class="label" for="keyInput">Azure Speech Key</label>
+        <div class="input-row">
+          <input id="keyInput" type="password" autocomplete="off" spellcheck="false" placeholder="z.B. 3f9a…">
+          <button class="btn btn-ghost" id="showKey" type="button" aria-label="Schlüssel zeigen">👁️</button>
+        </div>
+
+        <label class="label" for="regionInput">Region</label>
+        <input id="regionInput" list="regions" autocomplete="off" spellcheck="false" placeholder="northeurope">
+        <datalist id="regions">
+          <option value="northeurope"><option value="westeurope"><option value="germanywestcentral">
+          <option value="francecentral"><option value="swedencentral"><option value="uksouth">
+          <option value="eastus"><option value="eastus2"><option value="westus2"><option value="centralindia">
+          <option value="southeastasia"><option value="japaneast"><option value="australiaeast">
+        </datalist>
+
+        <label class="label" for="voiceSelect">Stimme · Voice (Azure TTS)</label>
+        <select id="voiceSelect">
+          <option value="de-DE-KatjaNeural">Katja (weiblich)</option>
+          <option value="de-DE-AmalaNeural">Amala (weiblich)</option>
+          <option value="de-DE-SeraphinaMultilingualNeural">Seraphina (weiblich)</option>
+          <option value="de-DE-ConradNeural">Conrad (männlich)</option>
+          <option value="de-DE-FlorianMultilingualNeural">Florian (männlich)</option>
+        </select>
+
+        <div class="toggle-row">
+          <div>
+            <b>Prosodie anfragen</b>
+            <p class="muted">Azure liefert den Prosodie-Wert derzeit nur für Englisch (en-US). Für Deutsch bleibt er meist leer. · Prosody is currently en-US only.</p>
+          </div>
+          <label class="switch"><input type="checkbox" id="prosodyToggle"><span></span></label>
+        </div>
+
+        <div class="toggle-row">
+          <div>
+            <b>Übersetzung zeigen</b>
+            <p class="muted">Englische Übersetzung unter dem Satz. · Show English translation.</p>
+          </div>
+          <label class="switch"><input type="checkbox" id="transToggle"><span></span></label>
+        </div>
+
+        <div class="row">
+          <button class="btn btn-primary" id="saveSettings">💾 Speichern</button>
+          <button class="btn btn-soft" id="testConn">🔌 Verbindung testen</button>
+        </div>
+        <p class="status small" id="settingsStatus"></p>
+      </section>
+
+      <section class="card info">
+        <h3 class="h3">Gut zu wissen · Good to know</h3>
+        <ul>
+          <li>🔒 Der Schlüssel wird nur in <b>diesem Browser</b> gespeichert (localStorage) und direkt an Azure gesendet. · The key stays in this browser only.</li>
+          <li>🎤 Das Mikrofon funktioniert nur über <b>HTTPS</b> (oder localhost). GitHub Pages / Netlify sind HTTPS. · Mic needs HTTPS.</li>
+          <li>📱 Chrome-Menü ⋮ → „Zum Startbildschirm hinzufügen“ für eine App auf dem Handy. · Add to home screen.</li>
+          <li>💸 Tipp: Eine kostenlose Azure Speech-Ressource (F0) reicht zum Üben. · The free F0 tier is enough.</li>
+        </ul>
+        <p class="muted small" id="secureNote"></p>
+      </section>
+    </main>
+
+  </div>
+
+  <!-- Phoneme bottom sheet -->
+  <div class="sheet-backdrop" id="sheetBackdrop" hidden></div>
+  <aside class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetWord" hidden>
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <h3 id="sheetWord" lang="de">Wort</h3>
+      <span class="pill" id="sheetScore">0</span>
+    </div>
+    <p class="muted" id="sheetError"></p>
+    <div class="phonemes" id="phonemes"></div>
+    <div class="row">
+      <button class="btn btn-soft" id="sheetPlay">🔊 Wort anhören</button>
+      <button class="btn btn-ghost" id="sheetClose">Schließen</button>
+    </div>
+  </aside>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="sentences.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
