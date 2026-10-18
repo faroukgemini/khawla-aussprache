@@ -134,11 +134,36 @@ const langM = logic.mergeProgress(langA, langB);
 assert.equal(langM.best.s.score, 90);
 assert.equal(langM.uiLang.value, "en");
 assert.equal(langM.guide.done, true);
+assert.equal(langM.guide.seenVersion, 1);
 const langReset = logic.mergeProgress(
   { clearedAt: 40, uiLang: { value: "", at: 0 }, guide: { done: false, at: 0 }, best: {}, attempts: [] },
   langB
 );
 assert.equal(langReset.uiLang.value, "");
 assert.equal(langReset.guide.done, false);
+assert.equal(langReset.guide.seenVersion, 0);
+const legacySeen = logic.mergeProgress({ guide: { done: true, at: 8 }, best: {}, attempts: [] }, null);
+assert.equal(legacySeen.guide.seenVersion, 1);
+const newerGuide = logic.mergeProgress(
+  { guide: { done: true, at: 10, seenVersion: 2 }, best: {}, attempts: [] },
+  { guide: { done: true, at: 50 }, best: {}, attempts: [] }
+);
+assert.equal(newerGuide.guide.seenVersion, 2);
+const guideCleared = logic.mergeProgress(
+  { clearedAt: 40, guide: { done: false, at: 0, seenVersion: 0 }, best: {}, attempts: [] },
+  { guide: { done: true, at: 30, seenVersion: 2 }, best: { s: { score: 91, at: 12 } }, attempts: [] }
+);
+assert.equal(guideCleared.guide.seenVersion, 0);
+assert.equal(guideCleared.best.s, undefined);
+const guideKeepsScore = logic.mergeProgress(
+  { guide: { done: true, at: 8 }, best: { s: { score: 91, at: 12 } }, attempts: [] },
+  { guide: { done: true, at: 9, seenVersion: 2 }, best: {}, attempts: [] }
+);
+assert.equal(guideKeepsScore.guide.seenVersion, 2);
+assert.equal(guideKeepsScore.best.s.score, 91);
+assert.equal(
+  logic.contentKey({ guide: { done: true, at: 5 }, best: {}, attempts: [] }),
+  logic.contentKey({ guide: { done: true, at: 5, seenVersion: 1 }, best: {}, attempts: [] })
+);
 
 console.log("logic tests ok", n, "sentences", UNITS.length, "units");
