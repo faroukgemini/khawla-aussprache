@@ -1,5 +1,5 @@
 /* Simple offline cache for the app shell. Speech scoring itself always needs internet (Azure). */
-const CACHE = "khawla-aussprache-v7";
+const CACHE = "khawla-aussprache-v8";
 const ASSETS = [
   "./", "./index.html", "./styles.css", "./app.js", "./i18n.js", "./logic.js", "./sentences.js", "./manifest.webmanifest",
   "./icons/icon.svg", "./icons/icon-192.png", "./icons/icon-512.png",

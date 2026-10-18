@@ -54,7 +54,15 @@
         <ellipse cx="90" cy="98" rx="4" ry="5" fill="#6d4a33"/>
         <ellipse cx="110" cy="98" rx="4" ry="5" fill="#6d4a33"/>
         <path class="mouth-smile" d="M88 112 q6 7 12 0 q6 7 12 0" fill="none" stroke="#6d4a33" stroke-width="3" stroke-linecap="round"/>
+        <path class="mouth-worry" d="M88 118 q12 -10 24 0" fill="none" stroke="#6d4a33" stroke-width="3" stroke-linecap="round"/>
         <ellipse class="mouth-o" cx="100" cy="116" rx="6" ry="7" fill="#6d4a33"/>
+        <g class="eyes-worry" fill="none" stroke="#3b2a20" stroke-width="4" stroke-linecap="round">
+          <path d="M66 72 q8 9 16 1"/>
+          <path d="M118 73 q8 9 16 -1"/>
+          <path d="M64 64 q10 -8 18 0"/>
+          <path d="M118 64 q10 -8 18 0"/>
+        </g>
+        <ellipse class="sweat" cx="154" cy="78" rx="5" ry="8" fill="#9ad7f0"/>
         <!-- yuzu on head -->
         <g class="yuzu">
           <circle cx="100" cy="26" r="16" fill="#ffb648"/>
@@ -484,6 +492,20 @@
   </aside>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <div id="keyWall" class="key-wall" hidden role="alertdialog" aria-modal="true" aria-labelledby="keyWallTitle">
+    <div class="key-wall-card">
+      <div class="mascot-big worried" aria-hidden="true">
+        <svg class="capy-svg"><use href="#capy"/></svg>
+      </div>
+      <h2 id="keyWallTitle">Go to Farouk! 💌</h2>
+      <p id="keyWallBody">Speech scoring isn't working on this phone, he needs to fix it.</p>
+      <div class="key-wall-actions">
+        <button class="btn btn-primary" id="keyWallAgain" type="button">Try again</button>
+        <button class="btn btn-ghost" id="keyWallSettings" type="button" hidden>Open Azure settings</button>
+      </div>
+    </div>
+  </div>
 
   <div id="guide" class="guide" hidden>
     <div class="guide-blocker"></div>

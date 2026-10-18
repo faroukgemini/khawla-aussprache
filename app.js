@@ -145,6 +145,7 @@ function loadProgress(id) {
       schedulePush();
     }
     paintI18n();
+    if (keyWallKind) renderKeyWall();
     if (session) {
       renderAll();
       greet();
@@ -233,6 +234,7 @@ function loadProgress(id) {
     showView("practice");
   }
   function maybeStartGuide() {
+    if (keyWallKind) return;
     if (!session || guideOpen) return;
     if ($("#app").hidden) return;
     if (!$("#loveModal").hidden || !$("#faroukModal").hidden) return;
@@ -930,6 +932,10 @@ function loadProgress(id) {
     if (v === "review") renderReview();
     if (location.hash !== "#" + v) history.replaceState(null, "", "#" + v);
     window.scrollTo(0, 0);
+    if (keyWallPaused && v !== "settings") {
+      keyWallPaused = false;
+      refreshKeyWall(true);
+    }
   }
   const viewFromHash = () => (["practice", "review", "progress", "settings"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "practice");
 
@@ -1111,24 +1117,98 @@ function loadProgress(id) {
     const fill = $("#recLevelFill");
     if (fill) fill.style.width = Math.max(4, Math.min(100, Math.round(rms * 340))) + "%";
   }
+  const SPEECH_REGIONS = new Set(["northeurope", "westeurope", "germanywestcentral", "francecentral", "swedencentral", "norwayeast", "switzerlandnorth", "uksouth", "ukwest", "eastus", "eastus2", "westus", "westus2", "westus3", "centralus", "southcentralus", "northcentralus", "canadacentral", "brazilsouth", "centralindia", "southindia", "southeastasia", "eastasia", "japaneast", "japanwest", "koreacentral", "australiaeast", "uaenorth", "southafricanorth"]);
+  const KEY_OK_MS = 10 * 60 * 1000;
+  const LS_KEYOK = "aussprache.keyok.v1";
+  let keyWallKind = "";
+  let keyWallPaused = false;
+  let keyCheckSeq = 0;
+  function keyFp() {
+    const raw = String(settings.key || "").trim() + "\n" + String(settings.region || "").trim().toLowerCase();
+    let h = 2166136261;
+    for (let i = 0; i < raw.length; i++) { h ^= raw.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return (h >>> 0).toString(16);
+  }
+  function cachedKeyOk() {
+    const v = loadRaw(LS_KEYOK, null);
+    return !!(v && v.fp === keyFp() && Date.now() - v.at < KEY_OK_MS);
+  }
+  function rememberKeyOk() { saveRaw(LS_KEYOK, { fp: keyFp(), at: Date.now() }); }
+  function forgetKeyOk() { try { localStorage.removeItem(LS_KEYOK); } catch {} }
+  function renderKeyWall() {
+    const el = $("#keyWall");
+    if (!el) return;
+    const show = keyWallKind === "bad" || keyWallKind === "offline";
+    el.hidden = !show;
+    el.classList.toggle("offline", keyWallKind === "offline");
+    const title = $("#keyWallTitle");
+    const body = $("#keyWallBody");
+    if (title) title.textContent = tr(keyWallKind === "offline" ? "keywall.offlineTitle" : "keywall.title");
+    if (body) body.textContent = tr(keyWallKind === "offline" ? "keywall.offlineBody" : "keywall.body");
+    const again = $("#keyWallAgain");
+    if (again) again.textContent = tr("keywall.again");
+    const settingsBtn = $("#keyWallSettings");
+    if (settingsBtn) {
+      settingsBtn.hidden = keyWallKind !== "bad" || !isAdmin();
+      settingsBtn.textContent = tr("keywall.settings");
+    }
+  }
+  function openKeyWall(kind) {
+    keyWallPaused = false;
+    keyWallKind = kind === "offline" ? "offline" : "bad";
+    if (guideOpen) {
+      guideOpen = false;
+      clearTimeout(guideTimer);
+      const layer = $("#guide");
+      if (layer) layer.hidden = true;
+    }
+    renderKeyWall();
+  }
+  function closeKeyWall() {
+    const was = keyWallKind;
+    keyWallKind = "";
+    renderKeyWall();
+    if (was) maybeStartGuide();
+  }
+  async function probeSpeechKey(force) {
+    if (!hasKey()) { forgetKeyOk(); return "bad"; }
+    const region = String(settings.region || "").trim().toLowerCase();
+    if (!SPEECH_REGIONS.has(region)) { forgetKeyOk(); return "bad"; }
+    if (!force && cachedKeyOk()) return "ok";
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return "offline";
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    try {
+      const res = await fetch("https://" + region + ".api.cognitive.microsoft.com/sts/v1.0/issueToken", {
+        method: "POST",
+        headers: {
+          "Ocp-Apim-Subscription-Key": String(settings.key).trim(),
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: "",
+        signal: ctrl.signal,
+      });
+      if (res.ok) { rememberKeyOk(); return "ok"; }
+      forgetKeyOk();
+      if (res.status >= 500) return "offline";
+      return "bad";
+    } catch (e) {
+      if (typeof navigator !== "undefined" && navigator.onLine === false) return "offline";
+      if (!SPEECH_REGIONS.has(region)) return "bad";
+      return "offline";
+    } finally { clearTimeout(timer); }
+  }
+  async function refreshKeyWall(force) {
+    const seq = ++keyCheckSeq;
+    const status = await probeSpeechKey(!!force);
+    if (seq !== keyCheckSeq || !session) return status;
+    if (status === "ok") closeKeyWall();
+    else openKeyWall(status);
+    return status;
+  }
   function showSetupNeeded() {
+    openKeyWall("bad");
     setState("idle", tr("status.tap"), "");
-    const hint = $("#hint");
-    if (!hint) return;
-    if (isAdmin()) {
-      hint.textContent = "";
-      hint.append(document.createTextNode(tr("err.noKeyAdmin") + " "));
-      const link = document.createElement("button");
-      link.type = "button";
-      link.className = "text-link";
-      link.textContent = tr("err.noKeyLink");
-      link.onclick = () => {
-        showView("settings");
-        const input = $("#keyInput");
-        if (input) input.focus();
-      };
-      hint.append(link);
-    } else hint.textContent = tr("err.noKeyLearner");
   }
   function showSilence() {
     setState("idle", tr("status.tap"), tr("err.heardNothing"));
@@ -1201,7 +1281,7 @@ function loadProgress(id) {
     }
   }
   function beginHold(pointerId) {
-    if ($("#app").hidden || guideOpen || state === "thinking" || holding) return;
+    if ($("#app").hidden || guideOpen || keyWallKind || state === "thinking" || holding) return;
     if (!hasKey()) { showSetupNeeded(); return; }
     if (typeof pointerId === "number") {
       try { $("#recordBtn").setPointerCapture(pointerId); } catch {}
@@ -1323,6 +1403,17 @@ function loadProgress(id) {
       if (id !== holdId) return;
       const msg = String((e && e.message) || e);
       if (/NoMatch|heard nothing|nichts gehört/i.test(msg)) { showSilence(); return; }
+      if (/429|quota|Too Many Requests|401|403|unauthori|forbidden|authentication|invalid subscription/i.test(msg)) {
+        forgetKeyOk();
+        setState("idle", tr("status.tap"), "");
+        openKeyWall("bad");
+        return;
+      }
+      if (/1006|Unable to contact server|ConnectionFailure|Failed to fetch|offline|network/i.test(msg)) {
+        setState("idle", tr("status.tap"), "");
+        openKeyWall("offline");
+        return;
+      }
       console.warn(e);
       setState("idle", tr("status.oh"), friendlyError(e));
     } finally {
@@ -1972,7 +2063,9 @@ function loadProgress(id) {
     renderAll();
     greet();
     showView(viewFromHash());
-    syncNow().catch(() => {}).finally(() => maybeStartGuide());
+    if (!hasKey()) openKeyWall("bad");
+    else refreshKeyWall(false).finally(() => { if (!keyWallKind) maybeStartGuide(); });
+    syncNow().catch(() => {});
   }
   function logout() {
     guideOpen = false;
@@ -1981,6 +2074,9 @@ function loadProgress(id) {
     if (layer) layer.hidden = true;
     localStorage.removeItem(LS_SESSION);
     session = null;
+    keyWallKind = "";
+    keyWallPaused = false;
+    renderKeyWall();
     $("#app").hidden = true;
     document.body.removeAttribute("data-role");
     $("#loveModal").hidden = true;
@@ -2104,6 +2200,8 @@ function loadProgress(id) {
       readAdminForm();
       $("#settingsStatus").textContent = hasKey() ? tr("toast.saved") : tr("toast.savedNoKey");
       renderHeader();
+      keyWallPaused = false;
+      refreshKeyWall(true);
     };
     const strictSel = $("#strictnessSelect");
     if (strictSel) strictSel.onchange = () => {
@@ -2254,6 +2352,19 @@ function loadProgress(id) {
     };
     window.addEventListener("resize", () => { if (guideOpen) positionGuide(); });
     if ("speechSynthesis" in window) speechSynthesis.getVoices();
+    $("#keyWallAgain").onclick = () => {
+      const btn = $("#keyWallAgain");
+      btn.disabled = true;
+      refreshKeyWall(true).finally(() => { btn.disabled = false; });
+    };
+    $("#keyWallSettings").onclick = () => {
+      keyWallPaused = true;
+      keyWallKind = "";
+      renderKeyWall();
+      showView("settings");
+      const input = $("#keyInput");
+      if (input) input.focus();
+    };
     bindGate();
     bindPets();
     const saved = loadRaw(LS_SESSION, null);

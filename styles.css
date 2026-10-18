@@ -139,13 +139,27 @@ button.text-link{background:none;border:0;padding:0;margin:0;color:#1f7a4d;font:
 .bee-svg .wing{animation:flap .12s linear infinite alternate;transform-origin:30px 22px}
 @keyframes flap{to{transform:scaleY(.6)}}
 @keyframes fly{0%{transform:translate(0,0) rotate(-6deg)}25%{transform:translate(150px,-10px) rotate(6deg)}50%{transform:translate(170px,60px) scaleX(-1)}75%{transform:translate(10px,40px) scaleX(-1)}100%{transform:translate(0,0)}}
-.capy-svg .eyes-happy,.capy-svg .eyes-sleepy,.capy-svg .mouth-o{display:none}
+.capy-svg .eyes-happy,.capy-svg .eyes-sleepy,.capy-svg .eyes-worry,.capy-svg .mouth-o,.capy-svg .mouth-worry,.capy-svg .sweat{display:none}
 .happy .capy-svg .eyes-open{display:none}
 .happy .capy-svg .eyes-happy{display:inline}
 .sleepy .capy-svg .eyes-open,.sleepy .capy-svg .eyes-happy{display:none}
 .sleepy .capy-svg .eyes-sleepy{display:inline}
 .listen .capy-svg .mouth-smile{display:none}
 .listen .capy-svg .mouth-o{display:inline}
+.worried .capy-svg .eyes-open,.worried .capy-svg .mouth-smile{display:none}
+.worried .capy-svg .eyes-worry,.worried .capy-svg .mouth-worry,.worried .capy-svg .sweat{display:inline}
+.key-wall{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:24px;background:#b42318;color:#fff;text-align:center}
+.key-wall[hidden]{display:none}
+.key-wall-card{width:min(420px,100%);display:grid;justify-items:center;gap:8px}
+.key-wall h2{font-family:var(--font-head);font-size:2rem;line-height:1.15;margin:0}
+.key-wall p{font-size:1.15rem;font-weight:700;line-height:1.35;margin:0;max-width:22rem}
+.key-wall-actions{display:grid;gap:10px;width:min(280px,100%);margin-top:10px}
+.key-wall .btn-primary{background:#fff;color:#b42318;box-shadow:none;font-size:1.05rem}
+.key-wall .btn-ghost{background:transparent;color:#fff;border:2px solid #fff}
+.key-wall .mascot-big{width:230px;height:196px}
+.key-wall.offline{background:#fff6e8;color:#3b2a20}
+.key-wall.offline .btn-primary{background:#3b2a20;color:#fff}
+.key-wall.offline .btn-ghost{color:#3b2a20;border-color:#3b2a20}
 .capy-svg .yuzu{animation:bob 3s ease-in-out infinite;transform-origin:100px 30px}
 @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px) rotate(4deg)}}
 .happy .capy-svg{animation:hop .6s ease 2}
