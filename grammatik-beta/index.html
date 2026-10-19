@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>Grammar beta</title>
+  <meta name="theme-color" content="#ffd6e7" />
+  <link rel="icon" href="../icons/icon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="stylesheet" href="beta.css" />
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="capy" viewBox="0 0 200 170">
+        <ellipse cx="100" cy="160" rx="62" ry="8" fill="#000" opacity=".07"/>
+        <ellipse cx="100" cy="138" rx="68" ry="30" fill="#b9814f"/>
+        <ellipse cx="62" cy="156" rx="14" ry="8" fill="#a06c3e"/>
+        <ellipse cx="138" cy="156" rx="14" ry="8" fill="#a06c3e"/>
+        <g class="capy-ears">
+          <ellipse class="ear-l" cx="58" cy="42" rx="12" ry="10" fill="#9b6738"/>
+          <ellipse class="ear-r" cx="142" cy="42" rx="12" ry="10" fill="#9b6738"/>
+          <ellipse cx="58" cy="43" rx="6" ry="5" fill="#e7a7a0"/>
+          <ellipse cx="142" cy="43" rx="6" ry="5" fill="#e7a7a0"/>
+        </g>
+        <rect x="42" y="34" width="116" height="104" rx="50" fill="#c9915e"/>
+        <ellipse cx="100" cy="106" rx="40" ry="26" fill="#ddb07f"/>
+        <g class="eyes-open">
+          <circle cx="76" cy="76" r="6.5" fill="#3b2a20"/>
+          <circle cx="124" cy="76" r="6.5" fill="#3b2a20"/>
+          <circle cx="78.5" cy="73.5" r="2.2" fill="#fff"/>
+          <circle cx="126.5" cy="73.5" r="2.2" fill="#fff"/>
+        </g>
+        <g class="eyes-happy" fill="none" stroke="#3b2a20" stroke-width="4" stroke-linecap="round">
+          <path d="M68 78 q8 -10 16 0"/>
+          <path d="M116 78 q8 -10 16 0"/>
+        </g>
+        <g class="eyes-sleepy" fill="none" stroke="#3b2a20" stroke-width="4" stroke-linecap="round">
+          <path d="M68 78 q8 7 16 0"/>
+          <path d="M116 78 q8 7 16 0"/>
+        </g>
+        <ellipse cx="62" cy="98" rx="10" ry="6" fill="#ff9fb8" opacity=".75"/>
+        <ellipse cx="138" cy="98" rx="10" ry="6" fill="#ff9fb8" opacity=".75"/>
+        <ellipse cx="90" cy="98" rx="4" ry="5" fill="#6d4a33"/>
+        <ellipse cx="110" cy="98" rx="4" ry="5" fill="#6d4a33"/>
+        <path class="mouth-smile" d="M88 112 q6 7 12 0 q6 7 12 0" fill="none" stroke="#6d4a33" stroke-width="3" stroke-linecap="round"/>
+        <path class="mouth-worry" d="M88 118 q12 -10 24 0" fill="none" stroke="#6d4a33" stroke-width="3" stroke-linecap="round"/>
+        <ellipse class="mouth-o" cx="100" cy="116" rx="6" ry="7" fill="#6d4a33"/>
+        <g class="eyes-worry" fill="none" stroke="#3b2a20" stroke-width="4" stroke-linecap="round">
+          <path d="M66 72 q8 9 16 1"/>
+          <path d="M118 73 q8 9 16 -1"/>
+          <path d="M64 64 q10 -8 18 0"/>
+          <path d="M118 64 q10 -8 18 0"/>
+        </g>
+        <ellipse class="sweat" cx="154" cy="78" rx="5" ry="8" fill="#9ad7f0"/>
+        <g class="yuzu">
+          <circle cx="100" cy="26" r="16" fill="#ffb648"/>
+          <circle cx="94" cy="21" r="4" fill="#ffd27f"/>
+          <path d="M100 11 q8 -9 16 -4 q-6 8 -16 4z" fill="#7ccf8a"/>
+        </g>
+      </symbol>
+      <symbol id="bee" viewBox="0 0 60 50">
+        <ellipse class="wing" cx="24" cy="12" rx="10" ry="12" fill="#e8f6ff" stroke="#9ccfee" stroke-width="2"/>
+        <ellipse class="wing" cx="38" cy="12" rx="10" ry="12" fill="#e8f6ff" stroke="#9ccfee" stroke-width="2"/>
+        <ellipse cx="30" cy="30" rx="20" ry="15" fill="#ffd84d" stroke="#3b2a20" stroke-width="2.5"/>
+        <path d="M24 16.5 v27 M34 15.6 v28.8" stroke="#3b2a20" stroke-width="5"/>
+        <circle cx="45" cy="27" r="2.6" fill="#3b2a20"/>
+        <path d="M10 30 l-7 0" stroke="#3b2a20" stroke-width="3" stroke-linecap="round"/>
+        <ellipse cx="44" cy="34" rx="3" ry="2" fill="#ff9fb8"/>
+      </symbol>
+    </defs>
+  </svg>
+
+  <div id="gate" class="gate">
+    <div class="gate-card card">
+      <div class="lang-switch" role="group" aria-label="Language">
+        <button type="button" data-lang="de" aria-pressed="false">DE</button>
+        <button type="button" data-lang="en" aria-pressed="true">EN</button>
+      </div>
+      <p class="beta-ribbon">grammar beta</p>
+      <div class="mascot-big" aria-hidden="true">
+        <svg class="capy-svg"><use href="#capy"/></svg>
+        <svg class="bee-svg"><use href="#bee"/></svg>
+      </div>
+      <h1 data-i18n="gate.title">Who's practicing today?</h1>
+      <p class="muted" data-i18n="gate.lead">Type your name.</p>
+      <label class="label" for="nameInput" data-i18n="gate.name">Name</label>
+      <input id="nameInput" autocomplete="nickname" autocapitalize="words" data-i18n-placeholder="gate.placeholder" placeholder="Khawla or Farouk" />
+      <div class="row">
+        <button class="btn btn-primary" id="nameGo" type="button" data-i18n="gate.go">Continue</button>
+      </div>
+      <p class="status small" id="nameError"></p>
+    </div>
+  </div>
+
+  <div id="loveModal" class="gate love-layer" hidden>
+    <div class="gate-card card" role="dialog" aria-modal="true" aria-labelledby="loveTitle">
+      <div class="mascot-mini happy" aria-hidden="true"><svg class="capy-svg"><use href="#capy"/></svg></div>
+      <h2 id="loveTitle" data-i18n="love.title">Do you love me?</h2>
+      <p class="muted" data-i18n="love.sub">Just a tiny question.</p>
+      <button class="btn btn-primary love-yes" id="loveYes" type="button" data-i18n="love.yes">Yes, of course 💛</button>
+      <div class="love-arena" id="loveArena">
+        <button class="btn btn-ghost love-no" id="loveNo" type="button" tabindex="-1" data-i18n="love.no">No</button>
+      </div>
+      <p class="muted small" data-i18n="love.hint">The No button is shy.</p>
+    </div>
+  </div>
+
+  <div id="faroukModal" class="gate" hidden>
+    <div class="gate-card card" role="dialog" aria-modal="true" aria-labelledby="faroukTitle">
+      <div class="mascot-mini" aria-hidden="true"><svg class="capy-svg"><use href="#capy"/></svg></div>
+      <h2 id="faroukTitle" data-i18n="farouk.title">Hi Farouk 🐹</h2>
+      <p class="muted" data-i18n="farouk.lead">This is the grammar beta. Just for you.</p>
+      <button class="btn btn-primary" id="faroukYes" type="button" data-i18n="farouk.go">Open the course</button>
+    </div>
+  </div>
+
+  <div class="app beta-app" id="app" hidden>
+    <header class="topbar">
+      <div class="hello">
+        <button type="button" class="mascot-mini pet-target" id="pet" aria-label="Pet Kapi">
+          <svg class="capy-svg"><use href="#capy"/></svg>
+        </button>
+        <div>
+          <p class="beta-ribbon">grammar beta</p>
+          <h1 id="helloTitle">Grammar garden</h1>
+        </div>
+      </div>
+      <div class="top-actions">
+        <div class="lang-switch" role="group" aria-label="Language">
+          <button type="button" data-lang="de">DE</button>
+          <button type="button" data-lang="en">EN</button>
+        </div>
+        <button class="btn btn-ghost only-admin" id="settingsBtn" type="button">⚙</button>
+        <button class="btn btn-ghost" id="logoutBtn" type="button" data-i18n="logout">Log out</button>
+      </div>
+    </header>
+    <nav class="bottom-nav" aria-label="Sections">
+      <button class="tab" type="button" data-go="home"><span class="tab-ico">🐹</span><span class="tab-label" data-i18n="nav.home">Units</span></button>
+      <button class="tab" type="button" data-go="review"><span class="tab-ico">🔁</span><span class="tab-label" data-i18n="nav.review">Review</span></button>
+      <button class="tab" type="button" data-go="weak"><span class="tab-ico">🌱</span><span class="tab-label" data-i18n="nav.weak">Weak</span></button>
+      <button class="tab" type="button" data-go="place"><span class="tab-ico">✨</span><span class="tab-label" data-i18n="nav.place">Test</span></button>
+      <button class="tab" type="button" data-go="about"><span class="tab-ico">💛</span><span class="tab-label" data-i18n="nav.about">About</span></button>
+    </nav>
+    <main id="view"></main>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+  <script src="i18n.js"></script>
+  <script src="grammar.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

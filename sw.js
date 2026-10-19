@@ -1,5 +1,5 @@
 /* Simple offline cache for the app shell. Speech scoring itself always needs internet (Azure). */
-const CACHE = "khawla-aussprache-v11";
+const CACHE = "khawla-aussprache-v12";
 const ASSETS = [
   "./", "./index.html", "./styles.css", "./app.js", "./i18n.js", "./logic.js", "./sentences.js", "./manifest.webmanifest",
   "./icons/icon.svg", "./icons/icon-192.png", "./icons/icon-512.png",
@@ -13,6 +13,7 @@ self.addEventListener("activate", (e) => {
 });
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
+  if (url.pathname.includes("/grammatik-beta/")) return; // hidden course: do not precache or route
   if (e.request.method !== "GET" || url.origin !== location.origin) return; // never touch Azure / font requests
   // network first (so updates show up), cache as fallback
   e.respondWith(
