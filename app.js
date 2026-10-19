@@ -1124,6 +1124,8 @@ function loadProgress(id) {
   const LS_KEYOK = "aussprache.keyok.v1";
   let keyWallKind = "";
   let keyWallPaused = false;
+  let keyWallErrorCode = "";
+  let keyWallRaw = "";
   let keyCheckSeq = 0;
   function keyFp() {
     const raw = String(settings.key || "").trim() + "\n" + String(settings.region || "").trim().toLowerCase();
@@ -1154,10 +1156,34 @@ function loadProgress(id) {
       settingsBtn.hidden = keyWallKind !== "bad" || !isAdmin();
       settingsBtn.textContent = tr("keywall.settings");
     }
+    const err = $("#keyWallError");
+    if (err) err.textContent = keyWallErrorCode ? tr(keyWallErrorCode) : "";
+    const eye = $("#keyWallEye");
+    const keyInput = $("#keyWallKey");
+    if (eye && keyInput) {
+      const shown = keyInput.classList.contains("revealed");
+      eye.setAttribute("aria-label", tr(shown ? "keywall.hide" : "key.show"));
+      eye.setAttribute("aria-pressed", shown ? "true" : "false");
+    }
+    const regionInput = $("#keyWallRegion");
+    if (regionInput && document.activeElement !== regionInput && !regionInput.value.trim()) {
+      regionInput.value = (settings.region || "northeurope").trim().toLowerCase() || "northeurope";
+    }
+  }
+  function setKeyWallError(code) {
+    keyWallErrorCode = code || "";
+    const err = $("#keyWallError");
+    if (err) err.textContent = keyWallErrorCode ? tr(keyWallErrorCode) : "";
   }
   function openKeyWall(kind) {
     keyWallPaused = false;
+    keyWallErrorCode = "";
     keyWallKind = kind === "offline" ? "offline" : "bad";
+    const mascot = $("#keyWallMascot");
+    if (mascot) {
+      mascot.classList.remove("happy");
+      mascot.classList.add("worried");
+    }
     if (guideOpen) {
       guideOpen = false;
       clearTimeout(guideTimer);
@@ -1172,10 +1198,17 @@ function loadProgress(id) {
     renderKeyWall();
     if (was) maybeStartGuide();
   }
+  function keyWallErrorFor(status) {
+    if (status === "quota") return "keywall.errQuota";
+    if (status === "region") return "keywall.errRegion";
+    if (status === "offline") return "keywall.errOffline";
+    if (status === "bad") return "keywall.errKey";
+    return "";
+  }
   async function probeSpeechKey(force) {
-    if (!hasKey()) { forgetKeyOk(); return "bad"; }
+    if (!hasKey()) { forgetKeyOk(); return "missing"; }
     const region = String(settings.region || "").trim().toLowerCase();
-    if (!SPEECH_REGIONS.has(region)) { forgetKeyOk(); return "bad"; }
+    if (!SPEECH_REGIONS.has(region)) { forgetKeyOk(); return "region"; }
     if (!force && cachedKeyOk()) return "ok";
     if (typeof navigator !== "undefined" && navigator.onLine === false) return "offline";
     const ctrl = new AbortController();
@@ -1192,11 +1225,13 @@ function loadProgress(id) {
       });
       if (res.ok) { rememberKeyOk(); return "ok"; }
       forgetKeyOk();
+      if (res.status === 429) return "quota";
+      if (res.status === 404) return "region";
       if (res.status >= 500) return "offline";
       return "bad";
     } catch (e) {
       if (typeof navigator !== "undefined" && navigator.onLine === false) return "offline";
-      if (!SPEECH_REGIONS.has(region)) return "bad";
+      if (!SPEECH_REGIONS.has(region)) return "region";
       return "offline";
     } finally { clearTimeout(timer); }
   }
@@ -1204,9 +1239,88 @@ function loadProgress(id) {
     const seq = ++keyCheckSeq;
     const status = await probeSpeechKey(!!force);
     if (seq !== keyCheckSeq || !session) return status;
-    if (status === "ok") closeKeyWall();
-    else openKeyWall(status);
+    if (status === "ok") {
+      setKeyWallError("");
+      closeKeyWall();
+    } else {
+      openKeyWall(status === "offline" ? "offline" : "bad");
+      setKeyWallError(keyWallErrorFor(status));
+    }
     return status;
+  }
+  async function pasteWallKey() {
+    const input = $("#keyWallKey");
+    if (!input) return;
+    try {
+      if (!navigator.clipboard || !navigator.clipboard.readText) throw new Error("clipboard");
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        keyWallRaw = text;
+        input.value = text;
+      }
+      input.focus();
+      setKeyWallError("");
+    } catch (e) {
+      input.focus();
+      setKeyWallError("keywall.pasteHint");
+    }
+  }
+  async function saveWallKey() {
+    const input = $("#keyWallKey");
+    const saveBtn = $("#keyWallSave");
+    if (!input || !saveBtn) return;
+    const visible = input.value;
+    const rawPaste = keyWallRaw.replace(/\r\n/g, "\n");
+    const flatPaste = rawPaste.replace(/\n/g, "");
+    const raw = rawPaste && (visible.replace(/\r\n/g, "\n") === rawPaste || visible.replace(/\r?\n/g, "") === flatPaste) ? rawPaste : visible;
+    const extracted = L.extractSpeechKey(raw);
+    if (!extracted) {
+      setKeyWallError(String(raw || "").trim() ? "keywall.errShape" : "keywall.errEmpty");
+      return;
+    }
+    const advanced = $("#keyWallAdvanced");
+    const regionInput = $("#keyWallRegion");
+    const typedRegion = regionInput ? regionInput.value.trim().toLowerCase() : "";
+    const region = advanced && !advanced.hidden
+      ? (typedRegion || "northeurope")
+      : ((settings.region && String(settings.region).trim().toLowerCase()) || "northeurope");
+    settings.key = extracted;
+    settings.region = region;
+    saveSettings();
+    ttsCache.clear();
+    forgetKeyOk();
+    const settingsKey = $("#keyInput");
+    if (settingsKey) settingsKey.value = settings.key;
+    const settingsRegion = $("#regionInput");
+    if (settingsRegion) settingsRegion.value = settings.region;
+    input.value = extracted;
+    saveBtn.disabled = true;
+    const seq = ++keyCheckSeq;
+    try {
+      const status = await probeSpeechKey(true);
+      if (seq !== keyCheckSeq || !session) return;
+      if (status === "ok") {
+        setKeyWallError("");
+        keyWallRaw = "";
+        input.value = "";
+        const mascot = $("#keyWallMascot");
+        if (mascot) {
+          mascot.classList.remove("worried");
+          mascot.classList.add("happy");
+        }
+        confetti(140);
+        floatEmojis(["💛", "🐹", "✨", "💖"]);
+        await sleep(700);
+        if (seq !== keyCheckSeq) return;
+        closeKeyWall();
+        capyCheer();
+        return;
+      }
+      openKeyWall(status === "offline" ? "offline" : "bad");
+      setKeyWallError(keyWallErrorFor(status));
+    } finally {
+      saveBtn.disabled = false;
+    }
   }
   function showSetupNeeded() {
     openKeyWall("bad");
@@ -2640,6 +2754,48 @@ function loadProgress(id) {
       btn.disabled = true;
       refreshKeyWall(true).finally(() => { btn.disabled = false; });
     };
+    const keyWallForm = $("#keyWallForm");
+    if (keyWallForm) keyWallForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      saveWallKey().catch((err) => console.warn("key check", err && err.name ? err.name : "failed"));
+    });
+    const keyWallPaste = $("#keyWallPaste");
+    if (keyWallPaste) keyWallPaste.onclick = () => { pasteWallKey().catch(() => {}); };
+    const keyWallEye = $("#keyWallEye");
+    if (keyWallEye) keyWallEye.onclick = () => {
+      const input = $("#keyWallKey");
+      if (!input) return;
+      input.classList.toggle("revealed");
+      const shown = input.classList.contains("revealed");
+      keyWallEye.setAttribute("aria-label", tr(shown ? "keywall.hide" : "key.show"));
+      keyWallEye.setAttribute("aria-pressed", shown ? "true" : "false");
+    };
+    const keyWallAdvancedBtn = $("#keyWallAdvancedBtn");
+    if (keyWallAdvancedBtn) keyWallAdvancedBtn.onclick = () => {
+      const box = $("#keyWallAdvanced");
+      if (!box) return;
+      box.hidden = !box.hidden;
+      keyWallAdvancedBtn.setAttribute("aria-expanded", box.hidden ? "false" : "true");
+      const regionInput = $("#keyWallRegion");
+      if (!box.hidden && regionInput) {
+        regionInput.value = (settings.region || "northeurope").trim().toLowerCase() || "northeurope";
+      }
+    };
+    const keyWallKey = $("#keyWallKey");
+    if (keyWallKey) {
+      keyWallKey.addEventListener("paste", (e) => {
+        const text = e.clipboardData && e.clipboardData.getData("text");
+        if (typeof text === "string" && text) keyWallRaw = text;
+      });
+      keyWallKey.addEventListener("input", () => {
+        if (keyWallRaw) {
+          const rawPaste = keyWallRaw.replace(/\r\n/g, "\n");
+          const visible = keyWallKey.value.replace(/\r\n/g, "\n");
+          if (visible !== rawPaste && visible.replace(/\n/g, "") !== rawPaste.replace(/\n/g, "")) keyWallRaw = "";
+        }
+        if (keyWallErrorCode) setKeyWallError("");
+      });
+    }
     $("#keyWallSettings").onclick = () => {
       keyWallPaused = true;
       keyWallKind = "";

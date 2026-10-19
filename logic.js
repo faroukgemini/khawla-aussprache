@@ -848,6 +848,45 @@ function mergeCatalog(a, b) {
     };
   }
 
+  function isExactSpeechKey(s) {
+    return /^[0-9a-fA-F]{32}$/.test(s) || /^[A-Za-z0-9+/_-]{84}$/.test(s);
+  }
+
+  function stripKeyWrapping(s) {
+    return String(s || "")
+      .replace(/[\u200B-\u200D\uFEFF]/g, "")
+      .replace(/^[\s`'"""''«»]+|[\s`'"""''«»]+$/g, "")
+      .trim();
+  }
+
+  function extractSpeechKey(raw) {
+    const text = stripKeyWrapping(raw);
+    if (!text) return "";
+    const compact = text.replace(/[\s`'"""''«»]+/g, "");
+    if (isExactSpeechKey(compact)) return compact;
+    const tokens = text.split(/\s+/).map(stripKeyWrapping).filter(Boolean);
+    const token84 = tokens.find((t) => /^[A-Za-z0-9+/_-]{84}$/.test(t));
+    if (token84) return token84;
+    let buf = "";
+    const chunks = [];
+    tokens.forEach((tok) => {
+      if (tok.length >= 16 && /^[A-Za-z0-9+/_-]+$/.test(tok)) buf += tok;
+      else {
+        if (buf) chunks.push(buf);
+        buf = "";
+      }
+    });
+    if (buf) chunks.push(buf);
+    const wrapped84 = chunks.find((c) => /^[A-Za-z0-9+/_-]{84}$/.test(c));
+    if (wrapped84) return wrapped84;
+    const wrapped32 = chunks.find((c) => /^[0-9a-fA-F]{32}$/.test(c));
+    if (wrapped32) return wrapped32;
+    const token32 = tokens.find((t) => /^[0-9a-fA-F]{32}$/.test(t));
+    if (token32) return token32;
+    if (tokens.length === 1) return tokens[0];
+    return "";
+  }
+
   function bestScore(progress, id) {
     const b = progress && progress.best && progress.best[id];
     return b && typeof b.score === "number" ? b.score : null;
@@ -905,5 +944,6 @@ function mergeCatalog(a, b) {
     readActivity,
     applyActivity,
     mergeActivity,
+    extractSpeechKey,
   };
 });

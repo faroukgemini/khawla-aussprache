@@ -513,11 +513,26 @@
 
   <div id="keyWall" class="key-wall" hidden role="alertdialog" aria-modal="true" aria-labelledby="keyWallTitle">
     <div class="key-wall-card">
-      <div class="mascot-big worried" aria-hidden="true">
+      <div class="mascot-big worried" id="keyWallMascot" aria-hidden="true">
         <svg class="capy-svg"><use href="#capy"/></svg>
       </div>
       <h2 id="keyWallTitle">Go to Farouk! 💌</h2>
       <p id="keyWallBody">Speech scoring isn't working on this phone, he needs to fix it.</p>
+      <form id="keyWallForm" class="key-wall-form" autocomplete="off" method="post" action="#">
+        <label class="key-wall-label" for="keyWallKey" data-i18n="keywall.pasteLabel">Paste the key Farouk sent you</label>
+        <div class="input-row">
+          <textarea id="keyWallKey" rows="2" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="go" data-1p-ignore data-lpignore="true"></textarea>
+          <button class="btn btn-ghost key-wall-eye" id="keyWallEye" type="button" data-i18n-aria="key.show" aria-label="Show key">👁️</button>
+        </div>
+        <button class="btn btn-ghost" id="keyWallPaste" type="button" data-i18n="keywall.paste">Paste</button>
+        <button class="btn btn-primary" id="keyWallSave" type="submit" data-i18n="keywall.save">Save &amp; try again</button>
+        <p class="key-wall-error" id="keyWallError" role="alert"></p>
+        <button class="key-wall-advanced" id="keyWallAdvancedBtn" type="button" aria-expanded="false" data-i18n="keywall.advanced">Advanced</button>
+        <div id="keyWallAdvanced" hidden>
+          <label class="key-wall-label" for="keyWallRegion" data-i18n="region.label">Region</label>
+          <input id="keyWallRegion" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" value="northeurope">
+        </div>
+      </form>
       <div class="key-wall-actions">
         <button class="btn btn-primary" id="keyWallAgain" type="button">Try again</button>
         <button class="btn btn-ghost" id="keyWallSettings" type="button" hidden>Open Azure settings</button>

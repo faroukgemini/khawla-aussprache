@@ -327,4 +327,18 @@ const echoed = logic.mergeActivity(mergedAct, remoteAct, t0 + 60000);
 assert.equal(echoed.days[day].activeMs, 60000);
 assert.equal(echoed.days[day].attempts, 3);
 
+const hexKey = "abcdef0123456789abcdef0123456789";
+const longKey = "Ab3".repeat(28);
+assert.equal(longKey.length, 84);
+assert.equal(logic.extractSpeechKey("  " + hexKey + " \n"), hexKey);
+assert.equal(logic.extractSpeechKey('"' + hexKey + '"'), hexKey);
+assert.equal(logic.extractSpeechKey("Here is the key:\n" + hexKey + "\nLove, Farouk"), hexKey);
+assert.equal(logic.extractSpeechKey("use this\n" + longKey + "\nthanks"), longKey);
+assert.equal(logic.extractSpeechKey(hexKey.slice(0, 16) + "\n" + hexKey.slice(16) + "\nfrom WhatsApp"), hexKey);
+assert.equal(logic.extractSpeechKey(longKey.slice(0, 40) + "\n" + longKey.slice(40)), longKey);
+assert.equal(logic.extractSpeechKey("hello there friend"), "");
+assert.equal(logic.extractSpeechKey(""), "");
+assert.equal(logic.extractSpeechKey("one-off-key"), "one-off-key");
+assert.equal(logic.extractSpeechKey("key " + longKey), longKey);
+
 console.log("logic tests ok", n, "sentences", UNITS.length, "units");
