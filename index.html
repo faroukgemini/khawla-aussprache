@@ -141,6 +141,7 @@
         <div>
           <h1 id="helloTitle">Hi!</h1>
           <p class="sub" id="helloSub" data-i18n="greet.ready">Ready for a little German?</p>
+          <p class="sync-pill" id="syncPill"></p>
         </div>
       </div>
       <div class="chips">
@@ -321,6 +322,13 @@
           <span id="activityPresenceText"></span>
         </p>
         <p class="muted small activity-when" id="activityWhen"></p>
+        <p class="muted small" id="activityVersion"></p>
+        <p class="muted small" id="activitySyncOk"></p>
+        <p class="status small" id="activitySyncErr"></p>
+        <h3 class="h3" data-i18n="activity.devices">Devices</h3>
+        <div id="activityDevices" class="device-list"></div>
+        <h3 class="h3" data-i18n="activity.recentSessions">Recent sessions</h3>
+        <ul class="recent" id="activitySessions"></ul>
         <h3 class="h3" data-i18n="activity.today">Today</h3>
         <div class="stats" id="activityToday"></div>
         <p class="muted small" id="activitySpan"></p>
@@ -355,7 +363,13 @@
           <label class="switch"><input type="checkbox" id="transToggle"><span></span></label>
         </div>
         <p class="status small" id="syncStatus"></p>
-        <p class="muted small only-learner" id="activityNotice" data-i18n="activity.notice">Farouk can see when you practise and how long 💛</p>
+        <div class="row">
+          <button class="btn btn-soft" id="syncNowBtn" type="button" data-i18n="sync.now">Sync now</button>
+        </div>
+        <label class="label" for="deviceName" data-i18n="device.name">Name this device</label>
+        <input id="deviceName" maxlength="40" autocomplete="off" data-i18n-placeholder="device.namePh" placeholder="Khawla's phone">
+        <p class="muted small" id="deviceAuto"></p>
+        <p class="muted small only-learner" id="activityNotice" data-i18n="activity.notice">Farouk can see when you practise, how long, and the name of this device 💛</p>
         <div class="row">
           <button class="btn btn-soft" id="showGuide" type="button" data-i18n="guide.again">🐹 Show guide again</button>
           <button class="btn btn-soft" id="exportMine" type="button" data-i18n="export.mine">⬇️ Export progress</button>

@@ -422,4 +422,37 @@ assert.equal(noId.attempts.length, 1);
 assert.ok(noId.attempts[0].id);
 assert.equal(logic.mergeProgress(noId, cloud).attempts.filter((a) => a.sentenceId === "s2").length, 1);
 
+assert.equal(logic.deviceAutoLabel("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1", false), "iPhone · Safari");
+assert.equal(logic.deviceAutoLabel("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1", true), "iPhone · Safari · App");
+assert.equal(logic.deviceAutoLabel("Mozilla/5.0 (Linux; Android 14; Pixel) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36", false), "Android · Chrome");
+assert.equal(logic.deviceAutoLabel("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0", false), "Windows · Edge");
+const phoneDev = { deviceId: "dphone01", label: "iPhone · Safari · App", appVersion: "v15" };
+let devAct = logic.applyActivity(logic.emptyActivity(), Object.assign({ kind: "show", at: t0 }, phoneDev));
+devAct = logic.applyActivity(devAct, Object.assign({ kind: "attempt", at: t0 + 2000, score: 70 }, phoneDev));
+assert.equal(devAct.devices.dphone01.sessions, 1);
+assert.equal(devAct.devices.dphone01.attempts, 1);
+assert.equal(devAct.recent.length, 1);
+assert.equal(devAct.recent[0].label, "iPhone · Safari · App");
+assert.equal(devAct.recent[0].attempts, 1);
+assert.equal(devAct.presence.appVersion, "v15");
+const otherDev = { deviceId: "dwin0001", label: "Windows · Edge", appVersion: "v15" };
+let otherAct = logic.applyActivity(logic.emptyActivity(), Object.assign({ kind: "show", at: t0 + 5000 }, otherDev));
+otherAct = logic.noteDeviceSync(otherAct, Object.assign({ at: t0 + 8000, sync: true, ok: false, error: "unavailable" }, otherDev));
+const both = logic.mergeActivity(devAct, otherAct, t0 + 8000);
+assert.equal(both.devices.dphone01.attempts, 1);
+assert.equal(both.devices.dwin0001.label, "Windows · Edge");
+assert.equal(both.devices.dwin0001.lastSyncError, "unavailable");
+assert.equal(both.recent.length, 2);
+const synced = logic.noteDeviceSync(devAct, Object.assign({ at: t0 + 9000, sync: true, ok: true }, phoneDev));
+assert.equal(synced.devices.dphone01.lastSyncOk, t0 + 9000);
+assert.equal(synced.presence.lastSyncOk, t0 + 9000);
+assert.equal(synced.devices.dphone01.attempts, 1);
+const tagged = logic.mergeProgress(logic.emptyProgress(), {
+  attempts: [{ id: "att-dev", sentenceId: "s9", text: "Hallo", score: 80, at: t0, deviceId: "dphone01", label: "iPhone · Safari" }],
+});
+assert.equal(tagged.attempts[0].deviceId, "dphone01");
+assert.equal(tagged.attempts[0].label, "iPhone · Safari");
+const renamed = logic.noteDeviceSync(devAct, { deviceId: "dphone01", label: "Khawla's phone", at: t0 + 3000 });
+assert.equal(renamed.recent[0].label, "Khawla's phone");
+
 console.log("logic tests ok", n, "sentences", UNITS.length, "units");

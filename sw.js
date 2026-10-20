@@ -1,5 +1,5 @@
 /* Simple offline cache for the app shell. Speech scoring itself always needs internet (Azure). */
-const CACHE = "khawla-aussprache-v14";
+const CACHE = "khawla-aussprache-v15";
 const ASSETS = [
   "./", "./index.html", "./styles.css", "./app.js", "./i18n.js", "./logic.js", "./sentences.js", "./manifest.webmanifest",
   "./icons/icon.svg", "./icons/icon-192.png", "./icons/icon-512.png",
@@ -9,7 +9,9 @@ self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
 });
 self.addEventListener("activate", (e) => {
-  e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
+  e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()).then(() => self.clients.matchAll({ type: "window" })).then((clients) => {
+    clients.forEach((c) => c.postMessage({ type: "sw-activated", cache: CACHE }));
+  }));
 });
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);

@@ -685,6 +685,7 @@ function mergeCatalog(a, b) {
   const ACTIVITY_HEARTBEAT_MS = 60 * 1000;
   const ACTIVITY_ONLINE_MS = 2 * 60 * 1000;
   const ACTIVITY_KEEP_DAYS = 60;
+  const ACTIVITY_RECENT_CAP = 40;
 
   function activityDayKey(ts) {
     return new Intl.DateTimeFormat("en-CA", {
@@ -732,6 +733,122 @@ function mergeCatalog(a, b) {
     return out.reverse();
   }
 
+  function readDeviceId(id) {
+    const s = String(id || "");
+    return /^[A-Za-z0-9_-]{6,48}$/.test(s) ? s : "";
+  }
+
+  function readDeviceLabel(label) {
+    return String(label || "").replace(/\s+/g, " ").trim().slice(0, 60);
+  }
+
+  function deviceAutoLabel(ua, standalone) {
+    const s = String(ua || "");
+    let os = "Computer";
+    if (/iPad/i.test(s)) os = "iPad";
+    else if (/iPhone|iPod/i.test(s)) os = "iPhone";
+    else if (/Android/i.test(s)) os = "Android";
+    else if (/Windows/i.test(s)) os = "Windows";
+    else if (/Mac OS X|Macintosh/i.test(s)) os = "Mac";
+    else if (/CrOS/i.test(s)) os = "Chromebook";
+    else if (/Linux/i.test(s)) os = "Linux";
+    let browser = "Browser";
+    if (/Edg\/|EdgiOS/i.test(s)) browser = "Edge";
+    else if (/OPR\/|Opera/i.test(s)) browser = "Opera";
+    else if (/FxiOS|Firefox\//i.test(s)) browser = "Firefox";
+    else if (/CriOS|Chrome\//i.test(s)) browser = "Chrome";
+    else if (/Safari\//i.test(s)) browser = "Safari";
+    return os + " · " + browser + (standalone ? " · App" : "");
+  }
+
+  function blankDevice() {
+    return { label: "", lastSeen: 0, lastSyncOk: 0, lastSyncError: "", lastSyncErrorAt: 0, appVersion: "", sessions: 0, attempts: 0 };
+  }
+
+  function normalizeDevice(d) {
+    const src = d || {};
+    return {
+      label: readDeviceLabel(src.label),
+      lastSeen: timeOf(src.lastSeen),
+      lastSyncOk: timeOf(src.lastSyncOk),
+      lastSyncError: String(src.lastSyncError || "").slice(0, 180),
+      lastSyncErrorAt: timeOf(src.lastSyncErrorAt),
+      appVersion: String(src.appVersion || "").replace(/[^\w.-]/g, "").slice(0, 24),
+      sessions: Math.max(0, Math.floor(Number(src.sessions) || 0)),
+      attempts: Math.max(0, Math.floor(Number(src.attempts) || 0)),
+    };
+  }
+
+  function readDevices(raw) {
+    const out = {};
+    Object.keys((raw && raw.devices) || {}).forEach((id) => {
+      const clean = readDeviceId(id);
+      if (!clean) return;
+      out[clean] = normalizeDevice(raw.devices[id]);
+    });
+    return out;
+  }
+
+  function normalizeSession(s) {
+    if (!s || typeof s !== "object") return null;
+    const at = timeOf(s.at);
+    if (!at) return null;
+    const deviceId = readDeviceId(s.deviceId);
+    const id = String(s.id || ("ses-" + at + "-" + (deviceId || "x"))).slice(0, 80);
+    return { id, at, deviceId, label: readDeviceLabel(s.label), attempts: Math.max(0, Math.floor(Number(s.attempts) || 0)) };
+  }
+
+  function capRecent(list, now) {
+    const cutoff = timeOf(now) - (ACTIVITY_KEEP_DAYS - 1) * DAY;
+    const rows = [];
+    const seen = new Set();
+    (list || []).forEach((item) => {
+      const row = normalizeSession(item);
+      if (!row || row.at < cutoff || seen.has(row.id)) return;
+      seen.add(row.id);
+      rows.push(row);
+    });
+    rows.sort((a, b) => b.at - a.at || String(a.id).localeCompare(String(b.id)));
+    return rows.slice(0, ACTIVITY_RECENT_CAP);
+  }
+
+  function mergeDevices(a, b) {
+    const out = {};
+    Object.keys(a || {}).concat(Object.keys(b || {})).forEach((id) => {
+      if (out[id]) return;
+      const x = (a && a[id]) || blankDevice();
+      const y = (b && b[id]) || blankDevice();
+      const newer = x.lastSeen >= y.lastSeen ? x : y;
+      const errSide = x.lastSyncErrorAt >= y.lastSyncErrorAt ? x : y;
+      out[id] = {
+        label: newer.label || x.label || y.label,
+        lastSeen: Math.max(x.lastSeen, y.lastSeen),
+        lastSyncOk: Math.max(x.lastSyncOk, y.lastSyncOk),
+        lastSyncError: errSide.lastSyncError,
+        lastSyncErrorAt: Math.max(x.lastSyncErrorAt, y.lastSyncErrorAt),
+        appVersion: newer.appVersion || x.appVersion || y.appVersion,
+        sessions: Math.max(x.sessions, y.sessions),
+        attempts: Math.max(x.attempts, y.attempts),
+      };
+    });
+    return out;
+  }
+
+  function mergePresence(a, b) {
+    const left = a || {};
+    const right = b || {};
+    const win = (left.lastSeen || 0) >= (right.lastSeen || 0) ? left : right;
+    const other = win === left ? right : left;
+    return {
+      lastSeen: Math.max(left.lastSeen || 0, right.lastSeen || 0),
+      visible: !!win.visible,
+      deviceId: win.deviceId || other.deviceId || "",
+      label: win.label || other.label || "",
+      appVersion: win.appVersion || other.appVersion || "",
+      lastSyncOk: Math.max(left.lastSyncOk || 0, right.lastSyncOk || 0),
+    };
+  }
+
   function blankActivityDay() {
     return { sessions: 0, activeMs: 0, attempts: 0, scoreSum: 0, first: 0, last: 0 };
   }
@@ -750,9 +867,11 @@ function mergeCatalog(a, b) {
 
   function emptyActivity() {
     return {
-      presence: { lastSeen: 0, visible: false },
-      track: { sessionOpen: false, hiddenAt: 0, visibleSince: 0 },
+      presence: { lastSeen: 0, visible: false, deviceId: "", label: "", appVersion: "", lastSyncOk: 0 },
+      track: { sessionOpen: false, hiddenAt: 0, visibleSince: 0, sessionId: "" },
       days: {},
+      devices: {},
+      recent: [],
       updatedAt: 0,
     };
   }
@@ -776,16 +895,23 @@ function mergeCatalog(a, b) {
     const t = raw.track || {};
     return {
       presence: {
-        lastSeen: Math.max(0, Number(p.lastSeen) || 0),
+        lastSeen: timeOf(p.lastSeen),
         visible: !!p.visible,
+        deviceId: readDeviceId(p.deviceId),
+        label: readDeviceLabel(p.label),
+        appVersion: String(p.appVersion || "").replace(/[^\w.-]/g, "").slice(0, 24),
+        lastSyncOk: timeOf(p.lastSyncOk),
       },
       track: {
         sessionOpen: !!t.sessionOpen,
-        hiddenAt: Math.max(0, Number(t.hiddenAt) || 0),
-        visibleSince: Math.max(0, Number(t.visibleSince) || 0),
+        hiddenAt: timeOf(t.hiddenAt),
+        visibleSince: timeOf(t.visibleSince),
+        sessionId: typeof t.sessionId === "string" ? t.sessionId.slice(0, 80) : "",
       },
       days,
-      updatedAt: Math.max(0, Number(raw.updatedAt) || 0),
+      devices: readDevices(raw),
+      recent: capRecent(raw.recent, raw.updatedAt || Date.now()),
+      updatedAt: timeOf(raw.updatedAt),
     };
   }
 
@@ -812,7 +938,28 @@ function mergeCatalog(a, b) {
   function applyActivity(src, event) {
     const now = Math.max(0, Number(event && event.at) || 0);
     const kind = event && event.kind;
+    const deviceId = readDeviceId(event && event.deviceId);
+    const label = readDeviceLabel(event && event.label);
+    const appVersion = String((event && event.appVersion) || "").replace(/[^\w.-]/g, "").slice(0, 24);
     const a = readActivity(src);
+
+    function touchDev() {
+      if (!deviceId) return null;
+      if (!a.devices[deviceId]) a.devices[deviceId] = blankDevice();
+      const row = a.devices[deviceId];
+      if (label) row.label = label;
+      if (appVersion) row.appVersion = appVersion;
+      if (now > row.lastSeen) row.lastSeen = now;
+      return row;
+    }
+
+    function markPresenceDevice() {
+      const row = touchDev();
+      if (!deviceId) return;
+      a.presence.deviceId = deviceId;
+      a.presence.label = label || (row && row.label) || a.presence.label;
+      if (appVersion) a.presence.appVersion = appVersion;
+    }
 
     function startSession() {
       const day = touchActivityDay(a.days, activityDayKey(now));
@@ -820,6 +967,12 @@ function mergeCatalog(a, b) {
       if (!day.first) day.first = now;
       if (now > (day.last || 0)) day.last = now;
       a.track.sessionOpen = true;
+      const sessionId = "ses-" + now + "-" + (deviceId || "x");
+      a.track.sessionId = sessionId;
+      const row = touchDev();
+      if (row) row.sessions += 1;
+      a.recent.push({ id: sessionId, at: now, deviceId, label: label || (row && row.label) || "", attempts: 0 });
+      a.recent = capRecent(a.recent, now);
     }
 
     function closeSession() {
@@ -854,12 +1007,14 @@ function mergeCatalog(a, b) {
       a.track.hiddenAt = 0;
       a.presence.visible = true;
       a.presence.lastSeen = now;
+      markPresenceDevice();
     } else if (kind === "hide") {
       if (a.presence.visible && a.track.visibleSince) creditVisible(now);
       a.presence.visible = false;
       a.presence.lastSeen = now;
       a.track.hiddenAt = now;
       a.track.visibleSince = 0;
+      markPresenceDevice();
     } else if (kind === "tick") {
       if (a.presence.visible) {
         const since = a.track.visibleSince;
@@ -885,15 +1040,58 @@ function mergeCatalog(a, b) {
       day.scoreSum += score;
       if (!day.first) day.first = now;
       if (now > (day.last || 0)) day.last = now;
+      const row = touchDev();
+      if (row) row.attempts += 1;
+      const open = a.track.sessionId && a.recent.find((s) => s.id === a.track.sessionId);
+      if (open) open.attempts += 1;
       a.track.hiddenAt = 0;
       a.presence.visible = true;
       a.presence.lastSeen = now;
+      markPresenceDevice();
     } else {
       return a;
     }
 
     a.days = pruneActivityDays(a.days, now);
+    a.recent = capRecent(a.recent, now);
     a.updatedAt = now;
+    return a;
+  }
+
+  function noteDeviceSync(src, info) {
+    const a = readActivity(src);
+    const id = readDeviceId(info && info.deviceId);
+    const at = timeOf(info && info.at);
+    if (!id) return a;
+    if (!a.devices[id]) a.devices[id] = blankDevice();
+    const row = a.devices[id];
+    const label = readDeviceLabel(info && info.label);
+    const appVersion = String((info && info.appVersion) || "").replace(/[^\w.-]/g, "").slice(0, 24);
+    if (label) row.label = label;
+    if (appVersion) row.appVersion = appVersion;
+    if (at > row.lastSeen) row.lastSeen = at;
+    if (info && info.sync) {
+      if (info.ok) {
+        row.lastSyncOk = Math.max(row.lastSyncOk, at);
+        row.lastSyncError = "";
+        row.lastSyncErrorAt = 0;
+        a.presence.lastSyncOk = Math.max(a.presence.lastSyncOk || 0, at);
+      } else if (info.error) {
+        row.lastSyncError = String(info.error).slice(0, 180);
+        row.lastSyncErrorAt = at;
+      }
+    }
+    if (label && a.track.sessionId) {
+      const open = a.recent.find((s) => s.id === a.track.sessionId && s.deviceId === id);
+      if (open) open.label = label;
+    }
+    if (at >= a.presence.lastSeen) {
+      a.presence.lastSeen = at || a.presence.lastSeen;
+      a.presence.deviceId = id;
+      a.presence.label = row.label;
+      if (row.appVersion) a.presence.appVersion = row.appVersion;
+    }
+    a.updatedAt = Math.max(a.updatedAt, at);
     return a;
   }
 
@@ -917,7 +1115,7 @@ function mergeCatalog(a, b) {
         last: Math.max(x.last, y.last),
       };
     });
-    const presence = a.presence.lastSeen >= b.presence.lastSeen ? a.presence : b.presence;
+    const presence = mergePresence(a.presence, b.presence);
     const remoteTrack = remote && remote.track && (remote.track.sessionOpen || remote.track.hiddenAt || remote.track.visibleSince);
     const track = remoteTrack && b.updatedAt >= a.updatedAt ? b.track : a.track;
     const at = Math.max(0, Number(now) || 0, a.updatedAt, b.updatedAt, presence.lastSeen);
@@ -925,6 +1123,8 @@ function mergeCatalog(a, b) {
       presence,
       track,
       days: pruneActivityDays(days, at || Date.now()),
+      devices: mergeDevices(a.devices, b.devices),
+      recent: capRecent([].concat(a.recent || [], b.recent || []), at || Date.now()),
       updatedAt: Math.max(a.updatedAt, b.updatedAt),
     };
   }
@@ -1018,6 +1218,9 @@ function mergeCatalog(a, b) {
     ACTIVITY_HEARTBEAT_MS,
     ACTIVITY_ONLINE_MS,
     ACTIVITY_KEEP_DAYS,
+    ACTIVITY_RECENT_CAP,
+    deviceAutoLabel,
+    noteDeviceSync,
     activityDayKey,
     activityWeekday,
     recentActivityDays,
