@@ -353,8 +353,10 @@ function mergeProgress(local, remote) {
     return sum / list.length;
   }
 
+  const OPEN_UNITS = 3;
+
   function isUnlocked(index, units, progress, passScore) {
-    if (index <= 0) return true;
+    if (index < OPEN_UNITS) return true;
     const prev = units[index - 1];
     if (!prev) return true;
     return unitAverage(prev, progress) >= (passScore || UNLOCK_AVG);

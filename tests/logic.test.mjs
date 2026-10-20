@@ -29,11 +29,17 @@ for (const row of LEGACY) assert.ok(byText.has(logic.norm(row.de)), "legacy miss
 
 const prog = logic.emptyProgress();
 assert.equal(logic.isUnlocked(0, UNITS, prog), true);
-assert.equal(logic.isUnlocked(1, UNITS, prog), false);
-UNITS[0].sentences.forEach((s) => { prog.best[s.id] = { score: 80, at: 10 }; });
-assert.ok(logic.unitAverage(UNITS[0], prog) >= 80);
 assert.equal(logic.isUnlocked(1, UNITS, prog), true);
-assert.equal(logic.isUnlocked(2, UNITS, prog), false);
+assert.equal(logic.isUnlocked(2, UNITS, prog), true);
+assert.equal(logic.isUnlocked(3, UNITS, prog), false);
+assert.equal(UNITS[0].title, "Hallo sagen");
+assert.equal(UNITS[1].title, "Sich vorstellen");
+assert.equal(UNITS[2].title, "Wie geht's?");
+UNITS[2].sentences.forEach((s) => { prog.best[s.id] = { score: 80, at: 10 }; });
+assert.ok(logic.unitAverage(UNITS[2], prog) >= 80);
+assert.equal(logic.isUnlocked(3, UNITS, prog), true);
+assert.equal(logic.isUnlocked(4, UNITS, prog), false);
+assert.equal(logic.isUnlocked(3, UNITS, prog, 85), false);
 
 const now = new Date(2026, 9, 18, 15, 0, 0).getTime();
 let rev = logic.scheduleReview(null, 92, now);
