@@ -271,6 +271,20 @@ button.text-link{background:none;border:0;padding:0;margin:0;color:#1f7a4d;font:
 .day .col.zero{background:#f4ecf1}
 .day.today{color:var(--pink-3)}
 .lvl{margin:10px 0}
+.lvl.locked{cursor:pointer}
+.lock-dialog{z-index:90}
+.lock-dialog .gate-card{width:min(460px,100%);text-align:left;max-height:min(86vh,680px);overflow:auto}
+.lock-dialog .mascot-mini{width:84px;height:72px;margin:0 auto}
+.lock-dialog h2{text-align:center}
+.lock-kapi{text-align:center;font-weight:800;color:var(--pink-3);margin:0}
+.lock-avg{font-weight:800}
+.lock-items{display:grid;gap:8px;margin:10px 0}
+.lock-item{display:grid;grid-template-columns:1fr auto;gap:8px 10px;align-items:center;background:#fdf6fa;border-radius:14px;padding:10px 12px}
+.lock-item b{display:block;font-size:.95rem}
+.lock-item .lock-en{display:block;color:var(--muted);font-weight:650;font-size:.8rem}
+.lock-item .lock-score{font-weight:800;justify-self:end}
+.lock-item .btn{grid-column:1 / -1;justify-self:start;min-height:40px}
+.lock-actions{justify-content:center}
 .lvl-top{display:flex;justify-content:space-between;font-weight:800;font-size:.92rem}
 .lvl .track{height:14px;background:#f4ecf1;border-radius:999px;overflow:hidden;margin-top:6px}
 .lvl .fill{height:100%;background:linear-gradient(90deg,var(--mint-2),#8fe0bf);border-radius:999px}

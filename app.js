@@ -13,8 +13,8 @@
   const LS_SYNC = "aussprache.syncmeta.v1";
   const LS_ACTIVITY = "aussprache.activity.khawla.v1";
   const LS_DEVICE = "aussprache.device.v1";
-  const APP_CACHE = "khawla-aussprache-v16";
-  const APP_VERSION = "v16";
+  const APP_CACHE = "khawla-aussprache-v17";
+  const APP_VERSION = "v17";
   const userKey = (id) => `aussprache.user.${id}.v1`;
 
   const $ = (s) => document.querySelector(s);
@@ -689,12 +689,82 @@ function loadProgress(id) {
     });
   }
 
+  function closeLock() {
+    const el = $("#lockDialog");
+    if (el) el.hidden = true;
+  }
+  function practiceFromLock(id) {
+    if (!id) return;
+    closeLock();
+    mode = "path";
+    queue = [];
+    showSentence(id);
+    showView("practice");
+    const wrap = $("#pathWrap");
+    if (wrap) wrap.hidden = true;
+    const toggle = $("#pathToggle");
+    if (toggle) toggle.setAttribute("aria-expanded", "false");
+    const card = $("#sentenceCard");
+    if (card) card.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  function showLock(index) {
+    const advice = L.lockAdvice(units(), index, progress, passFor());
+    if (!advice.locked) return;
+    const nameOf = (u) => unitName(u);
+    const prevName = nameOf(advice.previous);
+    const avg = Math.round(advice.average);
+    $("#lockKapi").textContent = tr("lock.kapi");
+    $("#lockTitle").textContent = tr("lock.title", { name: nameOf(advice.target) });
+    $("#lockLead").textContent = advice.kind === "start"
+      ? tr("lock.start", { prev: prevName })
+      : advice.later
+        ? tr("lock.whyLater", { blocked: nameOf(advice.blocked), prev: prevName, n: advice.need })
+        : tr("lock.why", { prev: prevName, n: advice.need });
+    $("#lockAvg").textContent = tr("lock.avg", { avg });
+    const box = $("#lockItems");
+    box.innerHTML = "";
+    const addRow = (item, scoreText) => {
+      const row = document.createElement("div");
+      row.className = "lock-item";
+      const text = document.createElement("div");
+      const de = document.createElement("b");
+      de.textContent = item.de;
+      de.lang = "de";
+      text.appendChild(de);
+      if (uiLang !== "de" && item.en) {
+        const en = document.createElement("span");
+        en.className = "lock-en";
+        en.textContent = item.en;
+        text.appendChild(en);
+      }
+      const score = document.createElement("span");
+      score.className = "lock-score";
+      score.textContent = scoreText;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn btn-primary";
+      btn.textContent = advice.kind === "start" ? tr("lock.begin") : tr("lock.practice");
+      btn.onclick = () => practiceFromLock(item.id);
+      row.append(text, score, btn);
+      box.appendChild(row);
+    };
+    if (advice.kind === "start") {
+      const first = (advice.previous && units().find((u) => u.id === advice.previous.id));
+      const sentence = first && (first.sentences || []).find((s) => s.id === advice.startId);
+      if (sentence) addRow({ de: sentence.de, en: sentence.en, id: sentence.id }, "—");
+    } else {
+      advice.items.forEach((item) => addRow(item, String(item.score)));
+      advice.missing.forEach((item) => addRow(item, tr("lock.notTried")));
+    }
+    $("#lockClose").textContent = tr("lock.close");
+    $("#lockDialog").hidden = false;
+  }
   function openUnit(unitId) {
     const list = units();
     const i = list.findIndex((u) => u.id === unitId);
     if (i < 0) return;
     if (!isAdmin() && !L.isUnlocked(i, list, progress, passFor())) {
-      toast(tr("locked"));
+      showLock(i);
       return;
     }
     const u = list[i];
@@ -786,7 +856,8 @@ function loadProgress(id) {
       const unlocked = isAdmin() || L.isUnlocked(i, units(), progress, passFor());
       const avg = Math.round(L.unitAverage(u, progress));
       const el = document.createElement("div");
-      el.className = "lvl";
+      el.className = "lvl" + (unlocked ? "" : " locked");
+      if (!unlocked && !isAdmin()) el.onclick = () => showLock(i);
       const top = document.createElement("div");
       top.className = "lvl-top";
       const name = document.createElement("span");
@@ -1062,7 +1133,7 @@ function loadProgress(id) {
     const list = units();
     const idx = list.findIndex((u) => (u.sentences || []).some((s) => s.id === id));
     if (idx >= 0 && !isAdmin() && !L.isUnlocked(idx, list, progress, passFor())) {
-      toast(tr("toast.nextLocked", { n: passFor() }));
+      showLock(idx);
       return;
     }
     mode = "path";
@@ -2914,7 +2985,7 @@ function loadProgress(id) {
     $("#sheetClose").onclick = closeSheet;
     $("#sheetBackdrop").onclick = closeSheet;
     $("#sheetPlay").onclick = (e) => sheetWord && speak(sheetWord.word, true, e.currentTarget);
-    document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSheet(); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeSheet(); closeLock(); } });
     $("#startReview").onclick = () => {
       const due = L.dueReviews(progress, Date.now()).map((r) => r.sentenceId).filter((id) => textFor(id).de);
       if (!due.length) { toast(tr("toast.nothingDue")); return; }
@@ -2939,6 +3010,10 @@ function loadProgress(id) {
       renderPractice();
     };
     $("#logoutBtn").onclick = logout;
+    const lockDialog = $("#lockDialog");
+    if (lockDialog) lockDialog.addEventListener("click", (e) => { if (e.target === lockDialog) closeLock(); });
+    const lockClose = $("#lockClose");
+    if (lockClose) lockClose.onclick = () => closeLock();
     const syncNowBtn = $("#syncNowBtn");
     if (syncNowBtn) syncNowBtn.onclick = () => {
       syncRetryN = 0;

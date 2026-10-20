@@ -362,6 +362,43 @@ function mergeProgress(local, remote) {
     return unitAverage(prev, progress) >= (passScore || UNLOCK_AVG);
   }
 
+  function lockUnitBrief(u) {
+    if (!u) return { id: "", title: "", titleEn: "", emoji: "" };
+    return { id: u.id || "", title: u.title || "", titleEn: u.titleEn || "", emoji: u.emoji || "" };
+  }
+
+  function lockAdvice(units, index, progress, need) {
+    const threshold = Number(need) > 0 ? Number(need) : UNLOCK_AVG;
+    const list = units || [];
+    if (!(index >= OPEN_UNITS) || !list[index] || isUnlocked(index, list, progress, threshold)) {
+      return { locked: false, need: threshold };
+    }
+    let gate = index;
+    while (gate > OPEN_UNITS && !isUnlocked(gate - 1, list, progress, threshold)) gate -= 1;
+    const prev = list[gate - 1];
+    const rows = ((prev && prev.sentences) || []).map((s) => {
+      const raw = scoreForProgress(progress, s.id);
+      return { id: s.id, de: s.de, en: s.en || "", score: raw == null ? null : Math.round(raw) };
+    });
+    const items = rows.filter((r) => r.score != null && r.score < threshold)
+      .sort((a, b) => a.score - b.score || String(a.de).localeCompare(String(b.de)));
+    const missing = rows.filter((r) => r.score == null);
+    const anyScore = rows.some((r) => r.score != null);
+    return {
+      locked: true,
+      kind: anyScore ? "scores" : "start",
+      need: threshold,
+      average: prev ? unitAverage(prev, progress) : 0,
+      later: gate !== index,
+      target: lockUnitBrief(list[index]),
+      blocked: lockUnitBrief(list[gate]),
+      previous: lockUnitBrief(prev),
+      items,
+      missing,
+      startId: rows[0] ? rows[0].id : null,
+    };
+  }
+
   function scheduleReview(prev, score, now, marks) {
     const step0 = prev && Number.isFinite(prev.step) ? prev.step : 0;
     const pass = (marks && marks.pass) || 80;
@@ -1374,6 +1411,7 @@ function mergeCatalog(a, b) {
     contentKey,
     unitAverage,
     isUnlocked,
+    lockAdvice,
     scheduleReview,
     dueReviews,
     findSentence,

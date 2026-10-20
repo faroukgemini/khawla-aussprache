@@ -525,6 +525,19 @@
   </aside>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div id="lockDialog" class="gate lock-dialog" hidden>
+    <div class="gate-card card" role="dialog" aria-modal="true" aria-labelledby="lockTitle">
+      <div class="mascot-mini" aria-hidden="true"><svg class="capy-svg"><use href="#capy"/></svg></div>
+      <p class="lock-kapi" id="lockKapi"></p>
+      <h2 id="lockTitle"></h2>
+      <p id="lockLead"></p>
+      <p class="lock-avg" id="lockAvg"></p>
+      <div id="lockItems" class="lock-items"></div>
+      <div class="row lock-actions">
+        <button class="btn btn-ghost" id="lockClose" type="button"></button>
+      </div>
+    </div>
+  </div>
 
   <div id="keyWall" class="key-wall" hidden role="alertdialog" aria-modal="true" aria-labelledby="keyWallTitle">
     <div class="key-wall-card">
