@@ -341,4 +341,79 @@ assert.equal(logic.extractSpeechKey(""), "");
 assert.equal(logic.extractSpeechKey("one-off-key"), "one-off-key");
 assert.equal(logic.extractSpeechKey("key " + longKey), longKey);
 
+const oct18a = Date.UTC(2026, 9, 18, 9, 42, 0);
+const oct18b = Date.UTC(2026, 9, 18, 18, 32, 0);
+const oct18c = Date.UTC(2026, 9, 18, 18, 33, 0);
+const oct19 = Date.UTC(2026, 9, 19, 15, 0, 0);
+const oct20 = Date.UTC(2026, 9, 19, 23, 9, 0);
+const phone = logic.emptyProgress();
+phone.best = {
+  "a1-hallo-03": { score: 74, at: oct18c },
+  "a1-familie-01": { score: 52, at: oct18a },
+  "a1-essen-01": { score: 91, at: oct19 },
+};
+phone.attempts = [
+  { id: "legacy-att-" + oct18a + "-0", sentenceId: "a1-familie-01", score: 52, at: oct18a, text: "Familie" },
+  { id: "h1", sentenceId: "a1-hallo-03", score: 47, at: oct18b, text: "Hallo" },
+  { id: "h2", sentenceId: "a1-hallo-03", score: 74, at: oct18c, text: "Hallo" },
+  { sentenceId: "a1-essen-01", score: 80, ts: oct19, text: "Essen" },
+  { sentenceId: "a1-essen-01", score: 91, at: oct19 + 1000, text: "Essen" },
+];
+phone.reviews = {
+  "a1-hallo-03": { last: oct18c, due: oct18c + 86400000, step: 1, lastScore: 74 },
+  "a1-essen-01": { last: oct19 + 1000, due: oct19 + 86400000, step: 1, lastScore: 91 },
+};
+phone.cursor = { sentenceId: "a1-essen-01", unitId: "a1-essen", at: oct19 + 1000 };
+phone.strictness = { value: "strict", at: oct19 };
+phone.pet = { count: 10, countAt: oct19, mute: false, muteAt: 0 };
+phone.updatedAt = oct19;
+const cloud = logic.emptyProgress();
+cloud.best = {
+  "a1-hallo-03": { score: 74, at: oct18c },
+  "a1-familie-01": { score: 52, at: oct18a },
+};
+cloud.attempts = [
+  { id: "legacy-att-" + oct18a + "-0", sentenceId: "a1-familie-01", score: 52, at: oct18a, text: "Familie" },
+  { id: "h1", sentenceId: "a1-hallo-03", score: 47, at: oct18b, text: "Hallo" },
+  { id: "h2", sentenceId: "a1-hallo-03", score: 74, at: oct18c, text: "Hallo" },
+];
+cloud.reviews = { "a1-hallo-03": { last: oct18c, due: oct18c + 86400000, step: 1, lastScore: 74 } };
+cloud.cursor = { sentenceId: "a1-hallo-03", unitId: "a1-hallo", at: { seconds: Math.floor(oct18c / 1000), nanoseconds: (oct18c % 1000) * 1e6 } };
+cloud.strictness = { value: "normal", at: oct20 };
+cloud.pet = { count: 44, countAt: oct20, mute: false, muteAt: 0 };
+cloud.updatedAt = oct20;
+const kept = logic.mergeProgress(phone, cloud);
+assert.equal(kept.attempts.length, 5, "local attempts stay when the cloud copy is older and thinner");
+assert.equal(kept.best["a1-essen-01"].score, 91);
+assert.equal(kept.best["a1-hallo-03"].score, 74);
+assert.equal(kept.best["a1-familie-01"].score, 52);
+assert.equal(kept.cursor.sentenceId, "a1-essen-01");
+assert.equal(kept.cursor.at, oct19 + 1000);
+assert.equal(kept.reviews["a1-essen-01"].lastScore, 91);
+assert.equal(kept.pet.count, 44);
+assert.equal(kept.strictness.value, "normal");
+const again = logic.mergeProgress(kept, cloud);
+assert.equal(again.attempts.length, 5);
+assert.equal(logic.contentKey(again), logic.contentKey(kept));
+const thinWinsClock = logic.mergeProgress(cloud, phone);
+assert.equal(thinWinsClock.attempts.length, 5);
+assert.equal(thinWinsClock.best["a1-essen-01"].score, 91);
+assert.equal(thinWinsClock.cursor.sentenceId, "a1-essen-01");
+const asMap = logic.mergeProgress(
+  { attempts: { x: { sentenceId: "s", score: 60, at: 4, text: "A" } }, best: {} },
+  { attempts: [{ id: "y", sentenceId: "s", score: 70, at: 8, text: "A" }], best: { s: { score: 70, at: 8 } } }
+);
+assert.equal(asMap.attempts.length, 2);
+assert.equal(asMap.best.s.score, 70);
+const maxBest = logic.mergeProgress(
+  { best: { s: { score: 90, at: 1 } }, attempts: [{ id: "a", sentenceId: "s", score: 90, at: 1 }] },
+  { best: { s: { score: 40, at: 99 } }, attempts: [{ id: "b", sentenceId: "s", score: 40, at: 99 }], updatedAt: 1000 }
+);
+assert.equal(maxBest.best.s.score, 90);
+assert.equal(maxBest.attempts.length, 2);
+const noId = logic.mergeProgress({ attempts: [{ sentenceId: "s2", score: 61, at: 3, text: "B" }], best: {} }, null);
+assert.equal(noId.attempts.length, 1);
+assert.ok(noId.attempts[0].id);
+assert.equal(logic.mergeProgress(noId, cloud).attempts.filter((a) => a.sentenceId === "s2").length, 1);
+
 console.log("logic tests ok", n, "sentences", UNITS.length, "units");

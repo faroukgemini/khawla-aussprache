@@ -14,6 +14,30 @@
 
   const norm = (w) => String(w || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
 
+  function timeOf(v) {
+    if (v == null || v === "") return 0;
+    if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+    if (typeof v === "string") {
+      const trimmed = v.trim();
+      if (!trimmed) return 0;
+      const asNum = Number(trimmed);
+      if (Number.isFinite(asNum) && String(asNum) === trimmed) return asNum;
+      const parsed = Date.parse(trimmed);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    if (typeof v === "object") {
+      if (typeof v.toMillis === "function") {
+        const ms = Number(v.toMillis());
+        if (Number.isFinite(ms)) return ms;
+      }
+      if (typeof v.seconds === "number" && Number.isFinite(v.seconds)) {
+        const nanos = Number(v.nanoseconds) || 0;
+        return v.seconds * 1000 + Math.floor(nanos / 1e6);
+      }
+    }
+    return 0;
+  }
+
   function emptyPet() {
     return { count: 0, countAt: 0, mute: false, muteAt: 0 };
   }
@@ -22,9 +46,9 @@
     const pet = (src && src.pet) || {};
     return {
       count: Math.max(0, Math.floor(Number(pet.count) || 0)),
-      countAt: Math.max(0, Number(pet.countAt) || 0),
+      countAt: timeOf(pet.countAt),
       mute: !!pet.mute,
-      muteAt: Math.max(0, Number(pet.muteAt) || 0),
+      muteAt: timeOf(pet.muteAt),
     };
   }
 
@@ -41,9 +65,9 @@
     const a = keep(readPet(local));
     const b = keep(readPet(remote));
     const countSide = a.count === b.count
-      ? ((a.countAt || 0) >= (b.countAt || 0) ? a : b)
+      ? (timeOf(a.countAt) >= timeOf(b.countAt) ? a : b)
       : (a.count > b.count ? a : b);
-    const muteSide = (a.muteAt || 0) >= (b.muteAt || 0) ? a : b;
+    const muteSide = timeOf(a.muteAt) >= timeOf(b.muteAt) ? a : b;
     return {
       count: countSide.count,
       countAt: countSide.countAt,
@@ -57,13 +81,13 @@
     const raw = v && (v.value === "en" || v.value === "de") ? v.value : "";
     // Only a tap on the DE/EN switch counts. An old automatic default has no explicit flag.
     if (!v || !v.explicit || !raw) return { value: "", at: 0, explicit: false };
-    return { value: raw, at: Math.max(0, Number(v.at) || 0), explicit: true };
+    return { value: raw, at: timeOf(v.at), explicit: true };
   }
 
   function readStrictness(src) {
     const s = src && src.strictness;
     const value = s && (s.value === "gentle" || s.value === "normal" || s.value === "strict") ? s.value : "";
-    return { value, at: Math.max(0, Number(s && s.at) || 0) };
+    return { value, at: timeOf(s && s.at) };
   }
 
   function readGuide(src) {
@@ -71,11 +95,11 @@
     const done = !!(g && g.done);
     let seenVersion = Math.max(0, Math.floor(Number(g && g.seenVersion) || 0));
     if (!seenVersion && done) seenVersion = 1;
-    return { done: done || seenVersion > 0, at: Math.max(0, Number(g && g.at) || 0), seenVersion };
+    return { done: done || seenVersion > 0, at: timeOf(g && g.at), seenVersion };
   }
 
   function laterOf(a, b) {
-    return (a.at || 0) >= (b.at || 0) ? a : b;
+    return timeOf(a && a.at) >= timeOf(b && b.at) ? a : b;
   }
 
   function mergeUiLang(local, remote, clearedAt) {
@@ -156,81 +180,134 @@
   }
 
   function asBest(v) {
-    if (v == null) return null;
-    if (typeof v === "number") return { score: v, at: 0 };
-    if (typeof v === "object" && typeof v.score === "number") return { score: v.score, at: v.at || 0 };
+    if (v == null || v === "") return null;
+    if (typeof v === "number" && Number.isFinite(v)) return { score: v, at: 0 };
+    if (typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v))) return { score: Number(v), at: 0 };
+    if (typeof v === "object") {
+      const raw = v.score;
+      const score = typeof raw === "number" && Number.isFinite(raw)
+        ? raw
+        : (typeof raw === "string" && raw.trim() !== "" && Number.isFinite(Number(raw)) ? Number(raw) : null);
+      if (score == null) return null;
+      return { score, at: timeOf(v.at) };
+    }
     return null;
+  }
+
+  function normalizeAttempt(att) {
+    if (!att || typeof att !== "object") return null;
+    const at = timeOf(att.at != null ? att.at : att.ts);
+    const sentenceId = att.sentenceId ? String(att.sentenceId) : "";
+    const rawScore = att.score;
+    const score = typeof rawScore === "number" && Number.isFinite(rawScore)
+      ? rawScore
+      : (typeof rawScore === "string" && rawScore.trim() !== "" && Number.isFinite(Number(rawScore)) ? Number(rawScore) : null);
+    let id = att.id != null && String(att.id) ? String(att.id) : "";
+    if (!id) {
+      const text = att.text ? String(att.text).slice(0, 80) : "";
+      id = "att-" + [sentenceId, at, score == null ? "" : score, text].join("-");
+    }
+    const copy = Object.assign({}, att);
+    copy.id = id;
+    copy.at = at;
+    if (sentenceId) copy.sentenceId = sentenceId;
+    if (score != null) copy.score = score;
+    return copy;
+  }
+
+  function attemptList(src) {
+    const raw = src && src.attempts;
+    const list = Array.isArray(raw) ? raw : (raw && typeof raw === "object" ? Object.values(raw) : []);
+    const out = [];
+    for (const item of list) {
+      const att = normalizeAttempt(item);
+      if (att) out.push(att);
+    }
+    return out;
+  }
+
+  function stampCursor(c) {
+    if (!c) return null;
+    const at = timeOf(c.at);
+    if (!c.sentenceId && !c.unitId && !at) return null;
+    return { sentenceId: c.sentenceId || null, unitId: c.unitId || null, at };
   }
 
 function stripCleared(src, clearedAt) {
   const p = src || emptyProgress();
-  if (!clearedAt) return p;
+  const cut = timeOf(clearedAt);
+  if (!cut) return p;
   const best = {};
   for (const [id, raw] of Object.entries(p.best || {})) {
     const b = asBest(raw);
-    if (b && (b.at || 0) > clearedAt) best[id] = b;
+    if (b && timeOf(b.at) > cut) best[id] = b;
   }
-  const attempts = (p.attempts || []).filter((a) => a && (a.at || 0) > clearedAt);
+  const attempts = attemptList(p).filter((a) => timeOf(a.at) > cut);
   const reviews = {};
   for (const [id, r] of Object.entries(p.reviews || {})) {
-    if (r && (r.last || 0) > clearedAt) reviews[id] = r;
+    if (r && timeOf(r.last) > cut) reviews[id] = r;
   }
-  const cursor = p.cursor && (p.cursor.at || 0) > clearedAt ? p.cursor : null;
-  const showTrans = p.showTrans && (p.showTrans.at || 0) > clearedAt ? p.showTrans : { value: true, at: 0 };
+  const cursor = p.cursor && timeOf(p.cursor.at) > cut ? p.cursor : null;
+  const showTrans = p.showTrans && timeOf(p.showTrans.at) > cut ? p.showTrans : { value: true, at: 0 };
   return { ...p, best, attempts, reviews, cursor, showTrans };
 }
 
 function mergeProgress(local, remote) {
-  const clearedAt = Math.max((local && local.clearedAt) || 0, (remote && remote.clearedAt) || 0);
+  const clearedAt = Math.max(timeOf(local && local.clearedAt), timeOf(remote && remote.clearedAt));
   const A = stripCleared(local || emptyProgress(), clearedAt);
   const B = stripCleared(remote || emptyProgress(), clearedAt);
   const best = {};
-    const ids = new Set([...Object.keys(A.best || {}), ...Object.keys(B.best || {})]);
-    for (const id of ids) {
-      const x = asBest(A.best[id]);
-      const y = asBest(B.best[id]);
-      if (!x && !y) continue;
-      if (!x) best[id] = y;
-      else if (!y) best[id] = x;
-      else if (x.score !== y.score) best[id] = x.score > y.score ? x : y;
-      else best[id] = (x.at || 0) >= (y.at || 0) ? x : y;
-    }
-    const byId = new Map();
-    for (const att of [...(A.attempts || []), ...(B.attempts || [])]) {
-      if (!att || !att.id) continue;
-      const prev = byId.get(att.id);
-      if (!prev || (att.at || 0) >= (prev.at || 0)) byId.set(att.id, att);
-    }
-    let attempts = [...byId.values()].sort((p, q) => (p.at || 0) - (q.at || 0) || String(p.id).localeCompare(String(q.id)));
-    if (attempts.length > ATTEMPT_CAP) attempts = attempts.slice(-ATTEMPT_CAP);
-    const reviews = {};
-    for (const id of new Set([...Object.keys(A.reviews || {}), ...Object.keys(B.reviews || {})])) {
-      const x = A.reviews[id];
-      const y = B.reviews[id];
-      if (!x) reviews[id] = y;
-      else if (!y) reviews[id] = x;
-      else reviews[id] = (x.last || 0) >= (y.last || 0) ? x : y;
-    }
-    const cursor = !A.cursor ? (B.cursor || null) : !B.cursor ? A.cursor : ((A.cursor.at || 0) >= (B.cursor.at || 0) ? A.cursor : B.cursor);
-    const stA = A.showTrans || { value: true, at: 0 };
-    const stB = B.showTrans || { value: true, at: 0 };
-    const showTrans = (stA.at || 0) >= (stB.at || 0) ? { value: !!stA.value, at: stA.at || 0 } : { value: !!stB.value, at: stB.at || 0 };
-    return {
-      schema: 2,
-      best,
-      attempts,
-      reviews,
-      cursor,
-      showTrans,
-      days: recomputeDays(attempts),
-      clearedAt,
-      pet: mergePet(A, B, clearedAt),
-      uiLang: mergeUiLang(A, B, clearedAt),
-      strictness: mergeStrictness(A, B, clearedAt),
-      guide: mergeGuide(A, B, clearedAt),
-      updatedAt: Math.max(A.updatedAt || 0, B.updatedAt || 0),
-    };
+  const ids = new Set([...Object.keys(A.best || {}), ...Object.keys(B.best || {})]);
+  for (const id of ids) {
+    const x = asBest(A.best[id]);
+    const y = asBest(B.best[id]);
+    if (!x && !y) continue;
+    if (!x) best[id] = y;
+    else if (!y) best[id] = x;
+    else if (x.score !== y.score) best[id] = x.score > y.score ? x : y;
+    else best[id] = timeOf(x.at) >= timeOf(y.at) ? x : y;
   }
+  const byId = new Map();
+  for (const att of [...attemptList(A), ...attemptList(B)]) {
+    const prev = byId.get(att.id);
+    if (!prev || timeOf(att.at) >= timeOf(prev.at)) byId.set(att.id, att);
+  }
+  let attempts = [...byId.values()].sort((p, q) => timeOf(p.at) - timeOf(q.at) || String(p.id).localeCompare(String(q.id)));
+  if (attempts.length > ATTEMPT_CAP) attempts = attempts.slice(-ATTEMPT_CAP);
+  for (const att of attempts) {
+    if (!att.sentenceId || typeof att.score !== "number" || att.demo === true) continue;
+    const prev = asBest(best[att.sentenceId]);
+    const row = { score: att.score, at: timeOf(att.at) };
+    if (!prev || row.score > prev.score || (row.score === prev.score && row.at > timeOf(prev.at))) best[att.sentenceId] = row;
+  }
+  const reviews = {};
+  for (const id of new Set([...Object.keys(A.reviews || {}), ...Object.keys(B.reviews || {})])) {
+    const x = A.reviews[id];
+    const y = B.reviews[id];
+    if (!x) reviews[id] = y;
+    else if (!y) reviews[id] = x;
+    else reviews[id] = timeOf(x.last) >= timeOf(y.last) ? x : y;
+  }
+  const cursor = stampCursor(!A.cursor ? (B.cursor || null) : !B.cursor ? A.cursor : (timeOf(A.cursor.at) >= timeOf(B.cursor.at) ? A.cursor : B.cursor));
+  const stA = A.showTrans || { value: true, at: 0 };
+  const stB = B.showTrans || { value: true, at: 0 };
+  const showTrans = timeOf(stA.at) >= timeOf(stB.at) ? { value: !!stA.value, at: timeOf(stA.at) } : { value: !!stB.value, at: timeOf(stB.at) };
+  return {
+    schema: 2,
+    best,
+    attempts,
+    reviews,
+    cursor,
+    showTrans,
+    days: recomputeDays(attempts),
+    clearedAt,
+    pet: mergePet(A, B, clearedAt),
+    uiLang: mergeUiLang(A, B, clearedAt),
+    strictness: mergeStrictness(A, B, clearedAt),
+    guide: mergeGuide(A, B, clearedAt),
+    updatedAt: Math.max(timeOf(A.updatedAt), timeOf(B.updatedAt)),
+  };
+}
 
   function contentKey(p) {
     const x = p || emptyProgress();
@@ -486,7 +563,9 @@ function mergeProgress(local, remote) {
       const prev = progress.best[id];
       if (!prev || b.score > prev.score) progress.best[id] = { score: b.score, at: b.at || 1 };
     }
-    progress.attempts = ((oldProgress && oldProgress.attempts) || []).map((a, i) => {
+    const rawAttempts = (oldProgress && oldProgress.attempts) || [];
+    const attemptRows = Array.isArray(rawAttempts) ? rawAttempts : Object.values(rawAttempts);
+    progress.attempts = attemptRows.map((a, i) => {
       const de = (a && a.text) || "";
       const id = byText.get(norm(de)) || (a && a.id) || ("legacy:" + i);
       return {

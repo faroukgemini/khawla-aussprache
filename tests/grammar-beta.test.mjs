@@ -248,7 +248,7 @@ const suggested = G.suggestStart(units, items, placementIds, placementIds.map((i
 assert.equal(suggested, byId.get(placementIds[3]).unitId);
 
 const sw = fs.readFileSync(new URL("../sw.js", import.meta.url), "utf8");
-assert.match(sw, /khawla-aussprache-v12/);
+assert.match(sw, /khawla-aussprache-v13/);
 assert.match(sw, /grammatik-beta/);
 assert.ok(!sw.split("const ASSETS")[1].split("];")[0].includes("grammatik-beta"));
 for (const file of ["index.html", "app.js", "manifest.webmanifest", "README.md"]) {

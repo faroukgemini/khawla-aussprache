@@ -49,7 +49,9 @@
   let freeText = "";
   let booted = false;
   let syncing = false;
+  let syncAgain = false;
   let syncTimer = null;
+  let syncQueue = Promise.resolve();
 
   const isAdmin = () => session === "farouk";
   const firebaseConfigured = () => {
@@ -269,6 +271,19 @@ function loadProgress(id) {
       saveProgress("khawla", prog);
     }
     localStorage.setItem(LS_MIGRATED, "1");
+  }
+
+  function absorbLegacyProgress() {
+    const oldP = loadRaw("khawla.progress.v1", null);
+    const oldPos = loadRaw("khawla.position.v1", null);
+    const hasOld = oldP && ((oldP.best && Object.keys(oldP.best).length) || (oldP.attempts && oldP.attempts.length));
+    if (!hasOld && !oldPos) return;
+    const legacy = hasOld ? L.migrateLegacy(oldP, window.LEGACY || [], window.UNITS || []) : L.emptyProgress();
+    const cur = L.cursorFromLegacy(oldPos, window.LEGACY || [], window.UNITS || []);
+    if (cur) legacy.cursor = legacy.cursor && (legacy.cursor.at || 0) >= (cur.at || 0) ? legacy.cursor : cur;
+    const current = loadProgress("khawla");
+    const merged = L.mergeProgress(current, legacy);
+    if (L.contentKey(merged) !== L.contentKey(current)) saveProgress("khawla", merged);
   }
 
   function fromB64Url(s) {
@@ -947,6 +962,7 @@ function loadProgress(id) {
     progress.cursor = { sentenceId: id, unitId: hit ? hit.unit.id : (progress.cursor && progress.cursor.unitId), at: Date.now() };
     progress.updatedAt = Date.now();
     saveProgress(session, progress);
+    schedulePush();
     hideResult();
     renderPractice();
     renderHeader();
@@ -1898,24 +1914,32 @@ function loadProgress(id) {
     const snap = await fbDb.collection("users").doc(userId).get();
     return snap.exists ? snap.data() : null;
   }
-  async function writeRemote(userId, prog) {
-    await signInRole(authRole());
-    const data = JSON.parse(JSON.stringify({
+  function progressPayload(prog) {
+    const src = prog || L.emptyProgress();
+    return JSON.parse(JSON.stringify({
       schema: 2,
-      best: prog.best || {},
-      attempts: prog.attempts || [],
-      reviews: prog.reviews || {},
-      cursor: prog.cursor || null,
-      showTrans: prog.showTrans || { value: true, at: 0 },
-      pet: L.readPet(prog),
-      uiLang: L.readUiLang(prog),
-      strictness: L.readStrictness(prog),
-      guide: L.readGuide(prog),
-      clearedAt: prog.clearedAt || 0,
+      best: src.best || {},
+      attempts: src.attempts || [],
+      reviews: src.reviews || {},
+      cursor: src.cursor || null,
+      showTrans: src.showTrans || { value: true, at: 0 },
+      pet: L.readPet(src),
+      uiLang: L.readUiLang(src),
+      strictness: L.readStrictness(src),
+      guide: L.readGuide(src),
+      clearedAt: src.clearedAt || 0,
       updatedAt: Date.now(),
     }));
-    await fbDb.collection("users").doc(userId).set(data);
-    return data.updatedAt;
+  }
+  function liveProgress(userId) {
+    return userId === session ? progress : null;
+  }
+  function settleLocal(userId, remote) {
+    const settled = L.mergeProgress(L.mergeProgress(loadProgress(userId), liveProgress(userId)), remote);
+    saveProgress(userId, settled);
+    if (userId === session) progress = L.mergeProgress(progress, loadProgress(userId));
+    if (userId === session && L.contentKey(progress) !== L.contentKey(loadProgress(userId))) saveProgress(userId, progress);
+    return userId === session ? progress : loadProgress(userId);
   }
   function setSyncMeta(user, patch) {
     const all = loadRaw(LS_SYNC, {}) || {};
@@ -1943,36 +1967,51 @@ function loadProgress(id) {
     await signInRole("farouk");
     await pullCatalog();
   }
-  async function syncUser(userId, applyCursor) {
-    const remote = await fetchRemote(userId);
-    const local = loadProgress(userId);
-    const merged = L.mergeProgress(local, remote);
-    saveProgress(userId, merged);
-    if (userId === session) progress = loadProgress(session);
-    if (!remote || L.contentKey(merged) !== L.contentKey(remote)) {
-      const at = await writeRemote(userId, loadProgress(userId));
-      const saved = loadProgress(userId);
-      saved.updatedAt = at;
-      saveProgress(userId, saved);
-      if (userId === session) progress = saved;
+  async function syncUserBody(userId, applyCursor) {
+    await signInRole(authRole());
+    const ref = fbDb.collection("users").doc(userId);
+    let remoteUpdatedAt = 0;
+    for (let pass = 0; pass < 3; pass++) {
+      await fbDb.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        const remote = snap.exists ? snap.data() : null;
+        const merged = L.mergeProgress(L.mergeProgress(loadProgress(userId), liveProgress(userId)), remote);
+        const payload = progressPayload(merged);
+        if (!remote || L.contentKey(payload) !== L.contentKey(remote)) tx.set(ref, payload);
+      });
+      const snap = await ref.get();
+      const confirmed = snap.exists ? snap.data() : null;
+      const settled = settleLocal(userId, confirmed);
+      remoteUpdatedAt = (confirmed && confirmed.updatedAt) || 0;
+      if (confirmed && L.contentKey(settled) === L.contentKey(confirmed)) break;
+      if (!confirmed && L.contentKey(settled) === L.contentKey(L.emptyProgress())) break;
     }
-    if (applyCursor && progress.cursor && progress.cursor.sentenceId && L.findSentence(units(), progress.cursor.sentenceId)) {
+    if (applyCursor && userId === session && progress.cursor && progress.cursor.sentenceId && L.findSentence(units(), progress.cursor.sentenceId)) {
       currentId = progress.cursor.sentenceId;
     }
-    setSyncMeta(userId, { ok: true, at: Date.now(), remoteUpdatedAt: (remote && remote.updatedAt) || 0, error: "" });
+    setSyncMeta(userId, { ok: true, at: Date.now(), remoteUpdatedAt, error: "" });
+  }
+  function syncUser(userId, applyCursor) {
+    const job = syncQueue.then(() => syncUserBody(userId, applyCursor));
+    syncQueue = job.then(() => {}, () => {});
+    return job;
   }
   async function syncNow() {
     if (!session || !firebaseConfigured()) { renderSyncStatus(); return; }
-    if (syncing) return;
+    if (syncing) { syncAgain = true; return; }
     syncing = true;
     try {
-      await syncUser(session, !booted);
-      await pullCatalog();
-      booted = true;
-      renderAll();
+      do {
+        syncAgain = false;
+        await syncUser(session, !booted);
+        await pullCatalog();
+        booted = true;
+        renderAll();
+      } while (syncAgain);
     } catch (e) {
       console.warn(e);
       booted = true;
+      syncAgain = false;
       setSyncMeta(session, { ok: false, at: Date.now(), error: friendlySync(e) });
       renderSyncStatus();
     } finally { syncing = false; }
@@ -2733,6 +2772,7 @@ function loadProgress(id) {
 
   function init() {
     migrate();
+    absorbLegacyProgress();
     consumeSetup();
     const deviceLang = loadRaw(LS_UILANG, null);
     if (deviceLang && deviceLang.explicit && (deviceLang.value === "en" || deviceLang.value === "de")) uiLang = deviceLang.value;
