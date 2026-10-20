@@ -739,26 +739,209 @@ function mergeCatalog(a, b) {
   }
 
   function readDeviceLabel(label) {
-    return String(label || "").replace(/\s+/g, " ").trim().slice(0, 60);
+    return String(label || "").replace(/\s+/g, " ").trim().slice(0, 80);
+  }
+
+  const SAMSUNG_MODELS = {
+    "SM-S931": "Galaxy S25", "SM-S936": "Galaxy S25+", "SM-S938": "Galaxy S25 Ultra",
+    "SM-S921": "Galaxy S24", "SM-S926": "Galaxy S24+", "SM-S928": "Galaxy S24 Ultra",
+    "SM-S911": "Galaxy S23", "SM-S916": "Galaxy S23+", "SM-S918": "Galaxy S23 Ultra",
+    "SM-S901": "Galaxy S22", "SM-S906": "Galaxy S22+", "SM-S908": "Galaxy S22 Ultra",
+    "SM-G991": "Galaxy S21", "SM-G996": "Galaxy S21+", "SM-G998": "Galaxy S21 Ultra",
+    "SM-G990": "Galaxy S21 FE", "SM-G781": "Galaxy S20 FE",
+    "SM-A556": "Galaxy A55", "SM-A546": "Galaxy A54", "SM-A536": "Galaxy A53",
+    "SM-A528": "Galaxy A52s", "SM-A526": "Galaxy A52 5G", "SM-A525": "Galaxy A52",
+    "SM-A356": "Galaxy A35", "SM-A346": "Galaxy A34", "SM-A336": "Galaxy A33",
+    "SM-A256": "Galaxy A25", "SM-A245": "Galaxy A24",
+    "SM-A166": "Galaxy A16", "SM-A165": "Galaxy A16", "SM-A156": "Galaxy A15", "SM-A155": "Galaxy A15",
+    "SM-A146": "Galaxy A14", "SM-A145": "Galaxy A14", "SM-A057": "Galaxy A05s", "SM-A055": "Galaxy A05", "SM-A065": "Galaxy A06",
+    "SM-F956": "Galaxy Z Fold6", "SM-F946": "Galaxy Z Fold5", "SM-F741": "Galaxy Z Flip6", "SM-F731": "Galaxy Z Flip5",
+    "SM-M546": "Galaxy M54", "SM-M346": "Galaxy M34", "SM-M156": "Galaxy M15",
+  };
+
+  function mapPhoneModel(code) {
+    const raw = String(code || "").replace(/\s+/g, " ").trim().split(" Build/")[0].trim();
+    if (!raw || /^k$/i.test(raw)) return "";
+    if (/^pixel\b/i.test(raw)) return raw;
+    const upper = raw.toUpperCase().replace(/\s+/g, "");
+    return SAMSUNG_MODELS[upper.slice(0, 7)] || SAMSUNG_MODELS[upper] || raw;
+  }
+
+  function browserName(ua, brands) {
+    const list = Array.isArray(brands) ? brands : [];
+    const has = (re) => list.some((b) => re.test(String((b && b.brand) || "")));
+    if (has(/edge/i)) return "Edge";
+    if (has(/opera|opr/i)) return "Opera";
+    if (has(/samsung/i)) return "Samsung Internet";
+    if (has(/chrome/i)) return "Chrome";
+    if (has(/firefox/i)) return "Firefox";
+    if (has(/chromium/i)) return "Chrome";
+    const s = String(ua || "");
+    if (/Edg\/|EdgiOS/i.test(s)) return "Edge";
+    if (/OPR\/|OPiOS|Opera/i.test(s)) return "Opera";
+    if (/SamsungBrowser/i.test(s)) return "Samsung Internet";
+    if (/FxiOS|Firefox\//i.test(s)) return "Firefox";
+    if (/CriOS|Chrome\//i.test(s)) return "Chrome";
+    if (/Safari\//i.test(s)) return "Safari";
+    return "Browser";
+  }
+
+  function iosVersion(ua) {
+    const m = String(ua || "").match(/OS (\d+)[_.](\d+)/);
+    return m ? m[1] + "." + m[2] : "";
+  }
+
+  function androidFromUa(ua) {
+    const m = String(ua || "").match(/Android\s+([0-9.]+);\s*([^);]+)/i);
+    if (!m) return { version: "", model: "" };
+    const model = mapPhoneModel(m[2]);
+    return { version: model ? m[1].split(".")[0] : "", model };
+  }
+
+  function windowsName(platformVersion, ua) {
+    const pv = String(platformVersion || "");
+    const major = parseInt(pv.split(".")[0], 10);
+    if (pv && Number.isFinite(major)) {
+      if (major >= 13) return "Windows 11";
+      if (major >= 1) return "Windows 10";
+      if (pv.indexOf("0.3") === 0) return "Windows 8.1";
+      if (pv.indexOf("0.2") === 0) return "Windows 8";
+      if (pv.indexOf("0.1") === 0) return "Windows 7";
+    }
+    if (/Windows NT 10\.0/i.test(ua)) return "Windows 10";
+    if (/Windows NT 6\.3/i.test(ua)) return "Windows 8.1";
+    if (/Windows NT 6\.1/i.test(ua)) return "Windows 7";
+    return "Windows";
+  }
+
+  function macName(platformVersion, ua) {
+    const pv = String(platformVersion || "");
+    let v = "";
+    if (/^\d+\.\d+/.test(pv)) {
+      const p = pv.split(".");
+      v = p[0] + "." + p[1];
+    } else {
+      const m = String(ua || "").match(/Mac OS X (\d+)[_.](\d+)/i);
+      if (m) v = m[1] + "." + m[2];
+    }
+    return v ? "Mac · macOS " + v : "Mac";
+  }
+
+  function deviceHardwareLabel(ua, hints, standalone) {
+    const h = hints || {};
+    const browser = browserName(ua, h.fullVersionList);
+    const app = standalone ? " · App" : "";
+    const s = String(ua || "");
+    const platform = String(h.platform || "");
+    if (/iPad/i.test(s)) {
+      const v = iosVersion(s);
+      return "iPad" + (v ? " · iOS " + v : "") + " · " + browser + app;
+    }
+    if (/iPhone|iPod/i.test(s)) {
+      const v = iosVersion(s);
+      return "iPhone" + (v ? " · iOS " + v : "") + " · " + browser + app;
+    }
+    if (/android/i.test(platform) || /Android/i.test(s)) {
+      const fromUa = androidFromUa(s);
+      const model = mapPhoneModel(h.model) || fromUa.model;
+      let ver = "";
+      if (h.platformVersion && /^\d+/.test(String(h.platformVersion))) ver = String(h.platformVersion).split(".")[0];
+      else ver = fromUa.version;
+      if (!model) return "Android" + (ver ? " " + ver : "") + " · " + browser + app;
+      return model + (ver ? " · Android " + ver : "") + " · " + browser + app;
+    }
+    if (/windows/i.test(platform) || /Windows/i.test(s)) return windowsName(h.platformVersion, s) + " · " + browser + app;
+    if (/mac/i.test(platform) || /Mac OS X|Macintosh/i.test(s)) return macName(h.platformVersion, s) + " · " + browser + app;
+    if (/chrome os/i.test(platform) || /CrOS/i.test(s)) return "Chromebook · " + browser + app;
+    if (/linux/i.test(platform) || /Linux/i.test(s)) return "Linux · " + browser + app;
+    return "Computer · " + browser + app;
   }
 
   function deviceAutoLabel(ua, standalone) {
-    const s = String(ua || "");
-    let os = "Computer";
-    if (/iPad/i.test(s)) os = "iPad";
-    else if (/iPhone|iPod/i.test(s)) os = "iPhone";
-    else if (/Android/i.test(s)) os = "Android";
-    else if (/Windows/i.test(s)) os = "Windows";
-    else if (/Mac OS X|Macintosh/i.test(s)) os = "Mac";
-    else if (/CrOS/i.test(s)) os = "Chromebook";
-    else if (/Linux/i.test(s)) os = "Linux";
-    let browser = "Browser";
-    if (/Edg\/|EdgiOS/i.test(s)) browser = "Edge";
-    else if (/OPR\/|Opera/i.test(s)) browser = "Opera";
-    else if (/FxiOS|Firefox\//i.test(s)) browser = "Firefox";
-    else if (/CriOS|Chrome\//i.test(s)) browser = "Chrome";
-    else if (/Safari\//i.test(s)) browser = "Safari";
-    return os + " · " + browser + (standalone ? " · App" : "");
+    return deviceHardwareLabel(ua, null, !!standalone);
+  }
+
+  function cacheVersionNum(v) {
+    const m = String(v || "").match(/v(\d+)/i);
+    return m ? Number(m[1]) : 0;
+  }
+
+  function isOldBuild(reported, current) {
+    const have = cacheVersionNum(reported);
+    const now = cacheVersionNum(current);
+    return have > 0 && now > 0 && have < now;
+  }
+
+  function normalizeSyncRow(row, id) {
+    const src = row || {};
+    let state = src.state;
+    if (state !== "synced" && state !== "error" && state !== "notSet") {
+      state = src.error ? "error" : ((src.ok || src.lastOk) ? "synced" : "notSet");
+    }
+    return {
+      deviceId: id,
+      state,
+      ok: state === "synced",
+      error: state === "error" ? String(src.error || "").slice(0, 180) : "",
+      errorCode: state === "error" ? String(src.errorCode || "").slice(0, 80) : "",
+      at: timeOf(src.at),
+      lastOk: timeOf(src.lastOk),
+      appVersion: String(src.appVersion || "").replace(/[^\w.-]/g, "").slice(0, 24),
+      label: readDeviceLabel(src.label),
+    };
+  }
+
+  function readSyncDevices(doc) {
+    const src = doc || {};
+    const out = {};
+    const map = src.devices && typeof src.devices === "object" ? src.devices : {};
+    Object.keys(map).forEach((id) => {
+      const clean = readDeviceId(id);
+      if (!clean) return;
+      out[clean] = normalizeSyncRow(map[id], clean);
+    });
+    const legacyId = readDeviceId(src.deviceId);
+    if (legacyId && !out[legacyId]) out[legacyId] = normalizeSyncRow(src, legacyId);
+    return out;
+  }
+
+  function activityDeviceViews(activity, syncDoc, currentVersion) {
+    const syncMap = readSyncDevices(syncDoc);
+    const devices = (activity && activity.devices) || {};
+    const seen = new Set();
+    const rows = [];
+    Object.keys(devices).concat(Object.keys(syncMap)).forEach((id) => {
+      if (seen.has(id)) return;
+      seen.add(id);
+      const act = devices[id] || blankDevice();
+      const sync = syncMap[id];
+      const lastSyncOk = Math.max(timeOf(act.lastSyncOk), sync ? sync.lastOk : 0);
+      let state = "notSet";
+      let error = "";
+      if (sync) {
+        state = sync.state;
+        error = state === "error" ? sync.error : "";
+      } else if (act.lastSyncError && timeOf(act.lastSyncErrorAt) >= lastSyncOk) {
+        state = "error";
+        error = String(act.lastSyncError || "").slice(0, 180);
+      } else if (lastSyncOk) state = "synced";
+      const appVersion = (sync && sync.appVersion) || act.appVersion || "";
+      rows.push({
+        id,
+        label: (sync && sync.label) || act.label || "",
+        appVersion,
+        lastSeen: Math.max(timeOf(act.lastSeen), sync ? sync.at : 0),
+        lastSyncOk,
+        state,
+        error,
+        sessions: act.sessions || 0,
+        attempts: act.attempts || 0,
+        old: isOldBuild(appVersion, currentVersion),
+        at: sync ? sync.at : timeOf(act.lastSyncErrorAt),
+      });
+    });
+    rows.sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0) || String(a.id).localeCompare(String(b.id)));
+    return rows;
   }
 
   function blankDevice() {
@@ -1220,6 +1403,11 @@ function mergeCatalog(a, b) {
     ACTIVITY_KEEP_DAYS,
     ACTIVITY_RECENT_CAP,
     deviceAutoLabel,
+    deviceHardwareLabel,
+    mapPhoneModel,
+    isOldBuild,
+    readSyncDevices,
+    activityDeviceViews,
     noteDeviceSync,
     activityDayKey,
     activityWeekday,

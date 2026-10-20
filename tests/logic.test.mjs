@@ -422,10 +422,38 @@ assert.equal(noId.attempts.length, 1);
 assert.ok(noId.attempts[0].id);
 assert.equal(logic.mergeProgress(noId, cloud).attempts.filter((a) => a.sentenceId === "s2").length, 1);
 
-assert.equal(logic.deviceAutoLabel("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1", false), "iPhone · Safari");
-assert.equal(logic.deviceAutoLabel("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1", true), "iPhone · Safari · App");
-assert.equal(logic.deviceAutoLabel("Mozilla/5.0 (Linux; Android 14; Pixel) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36", false), "Android · Chrome");
-assert.equal(logic.deviceAutoLabel("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0", false), "Windows · Edge");
+const iphoneUa = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1";
+assert.equal(logic.deviceHardwareLabel(iphoneUa, null, false), "iPhone · iOS 17.0 · Safari");
+assert.equal(logic.deviceHardwareLabel(iphoneUa, null, true), "iPhone · iOS 17.0 · Safari · App");
+assert.equal(logic.deviceHardwareLabel("Mozilla/5.0 (iPad; CPU OS 16_4 like Mac OS X) AppleWebKit/605.1.15 Version/16.4 Mobile/15E148 Safari/604.1", false), "iPad · iOS 16.4 · Safari");
+const androidUa = "Mozilla/5.0 (Linux; Android 14; SM-A546B Build/UP1A) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36";
+assert.equal(logic.deviceHardwareLabel(androidUa, null, false), "Galaxy A54 · Android 14 · Chrome");
+const reducedUa = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36";
+assert.equal(logic.deviceHardwareLabel(reducedUa, {
+  model: "SM-X999Z", platform: "Android", platformVersion: "14.0.0",
+  fullVersionList: [{ brand: "Chromium", version: "120.0.6099.109" }, { brand: "Google Chrome", version: "120.0.6099.109" }],
+}, false), "SM-X999Z · Android 14 · Chrome");
+assert.equal(logic.deviceHardwareLabel(reducedUa, {
+  model: "Pixel 8", platform: "Android", platformVersion: "14.0.0",
+  fullVersionList: [{ brand: "Google Chrome", version: "120.0.6099.109" }],
+}, false), "Pixel 8 · Android 14 · Chrome");
+assert.equal(logic.deviceHardwareLabel("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0", { platform: "Windows", platformVersion: "15.0.0", fullVersionList: [{ brand: "Microsoft Edge", version: "120.0.0.0" }] }, false), "Windows 11 · Edge");
+assert.equal(logic.deviceAutoLabel("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0", false), "Windows 10 · Edge");
+assert.equal(logic.isOldBuild("v15", "v16"), true);
+assert.equal(logic.isOldBuild("v16", "v16"), false);
+assert.equal(logic.isOldBuild("", "v16"), false);
+const syncRows = logic.readSyncDevices({
+  devices: {
+    dphone01: { state: "error", error: "unavailable", at: t0 + 1000, lastOk: t0, appVersion: "v15", label: "Galaxy A54 · Android 14 · Chrome" },
+    dwin0001: { state: "synced", ok: true, at: t0 + 5000, lastOk: t0 + 5000, appVersion: "v16", label: "Windows 11 · Edge" },
+  },
+});
+assert.equal(syncRows.dphone01.state, "error");
+assert.equal(syncRows.dphone01.error, "unavailable");
+assert.equal(syncRows.dwin0001.lastOk, t0 + 5000);
+const legacySync = logic.readSyncDevices({ deviceId: "dphone01", ok: false, error: "auth", at: t0, lastOk: 0, appVersion: "v14", label: "iPhone · iOS 17.0 · Safari" });
+assert.equal(legacySync.dphone01.state, "error");
+assert.equal(legacySync.dphone01.appVersion, "v14");
 const phoneDev = { deviceId: "dphone01", label: "iPhone · Safari · App", appVersion: "v15" };
 let devAct = logic.applyActivity(logic.emptyActivity(), Object.assign({ kind: "show", at: t0 }, phoneDev));
 devAct = logic.applyActivity(devAct, Object.assign({ kind: "attempt", at: t0 + 2000, score: 70 }, phoneDev));
@@ -452,7 +480,16 @@ const tagged = logic.mergeProgress(logic.emptyProgress(), {
 });
 assert.equal(tagged.attempts[0].deviceId, "dphone01");
 assert.equal(tagged.attempts[0].label, "iPhone · Safari");
-const renamed = logic.noteDeviceSync(devAct, { deviceId: "dphone01", label: "Khawla's phone", at: t0 + 3000 });
-assert.equal(renamed.recent[0].label, "Khawla's phone");
+const renamed = logic.noteDeviceSync(devAct, { deviceId: "dphone01", label: "Galaxy A54 · Android 14 · Chrome", at: t0 + 3000 });
+assert.equal(renamed.recent[0].label, "Galaxy A54 · Android 14 · Chrome");
+const views = logic.activityDeviceViews(
+  { devices: { dphone01: { label: "Khawla's phone", lastSeen: t0, lastSyncOk: 0, lastSyncError: "", appVersion: "v15", sessions: 2, attempts: 1 } } },
+  { devices: { dphone01: { state: "error", error: "unavailable", at: t0 + 4000, lastOk: t0, appVersion: "v15", label: "Galaxy A54 · Android 14 · Chrome" }, dwin0001: { state: "notSet", at: t0, appVersion: "v14", label: "Windows 10 · Edge" } } },
+  "v16"
+);
+assert.equal(views[0].label, "Galaxy A54 · Android 14 · Chrome");
+assert.equal(views.find((r) => r.id === "dphone01").old, true);
+assert.equal(views.find((r) => r.id === "dphone01").state, "error");
+assert.equal(views.find((r) => r.id === "dwin0001").state, "notSet");
 
 console.log("logic tests ok", n, "sentences", UNITS.length, "units");

@@ -13,8 +13,8 @@
   const LS_SYNC = "aussprache.syncmeta.v1";
   const LS_ACTIVITY = "aussprache.activity.khawla.v1";
   const LS_DEVICE = "aussprache.device.v1";
-  const APP_CACHE = "khawla-aussprache-v15";
-  const APP_VERSION = "v15";
+  const APP_CACHE = "khawla-aussprache-v16";
+  const APP_VERSION = "v16";
   const userKey = (id) => `aussprache.user.${id}.v1`;
 
   const $ = (s) => document.querySelector(s);
@@ -28,23 +28,51 @@
   };
   const saveRaw = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 
+  let hardwareLabel = "";
+  let hardwarePromise = null;
+  function deviceStandalone() {
+    return (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone === true;
+  }
   function currentDevice() {
     let saved = loadRaw(LS_DEVICE, null) || {};
     if (!/^[A-Za-z0-9_-]{6,48}$/.test(String(saved.id || ""))) {
       const rnd = Math.random().toString(36).slice(2, 10);
-      saved = { id: "d" + rnd + Date.now().toString(36), name: String(saved.name || "") };
+      saved = { id: "d" + rnd + Date.now().toString(36), name: String(saved.name || ""), hardware: String(saved.hardware || "") };
       saveRaw(LS_DEVICE, saved);
     }
-    const standalone = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone === true;
-    const auto = L.deviceAutoLabel(navigator.userAgent || "", !!standalone);
+    const auto = hardwareLabel || saved.hardware || L.deviceHardwareLabel(navigator.userAgent || "", null, deviceStandalone());
     const name = String(saved.name || "").replace(/\s+/g, " ").trim().slice(0, 40);
-    return { id: saved.id, name, auto, label: name || auto };
+    return { id: saved.id, name, auto, label: auto };
   }
   function saveDeviceName(name) {
     const cur = currentDevice();
-    const next = { id: cur.id, name: String(name || "").replace(/\s+/g, " ").trim().slice(0, 40) };
-    saveRaw(LS_DEVICE, next);
+    saveRaw(LS_DEVICE, { id: cur.id, name: String(name || "").replace(/\s+/g, " ").trim().slice(0, 40), hardware: cur.label });
     return currentDevice();
+  }
+  function refineDeviceHardware() {
+    if (hardwarePromise) return hardwarePromise;
+    hardwarePromise = (async () => {
+      let hints = null;
+      const uad = navigator.userAgentData;
+      if (uad && typeof uad.getHighEntropyValues === "function") {
+        try { hints = await uad.getHighEntropyValues(["model", "platform", "platformVersion", "fullVersionList"]); }
+        catch (e) { hints = null; }
+      }
+      const label = L.deviceHardwareLabel(navigator.userAgent || "", hints, deviceStandalone());
+      if (label) {
+        hardwareLabel = label;
+        const cur = currentDevice();
+        saveRaw(LS_DEVICE, { id: cur.id, name: cur.name, hardware: label });
+      }
+      return currentDevice();
+    })();
+    return hardwarePromise;
+  }
+  function readyDevice() {
+    return Promise.race([
+      refineDeviceHardware(),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]).then(() => currentDevice());
   }
 
   function defaultSettings() {
@@ -2087,17 +2115,31 @@ function loadProgress(id) {
   async function writeSyncDiag(userId, meta) {
     if (!firebaseConfigured() || !session) return;
     await signInRole(authRole());
-    const dev = currentDevice();
-    await fbDb.collection("users").doc(userId).collection("meta").doc("syncStatus").set({
-      ok: !!meta.ok,
-      error: meta.ok ? "" : String(meta.error || "").slice(0, 180),
-      errorCode: meta.ok ? "" : String(meta.errorCode || "").slice(0, 80),
-      at: meta.at || Date.now(),
-      lastOk: meta.lastOk || 0,
+    const dev = await readyDevice();
+    const src = meta || {};
+    const state = src.error ? "error" : ((src.ok || src.lastOk) ? "synced" : "notSet");
+    const row = {
+      state,
+      ok: state === "synced",
+      error: state === "error" ? String(src.error || "").slice(0, 180) : "",
+      errorCode: state === "error" ? String(src.errorCode || "").slice(0, 80) : "",
+      at: src.at || Date.now(),
+      lastOk: src.lastOk || 0,
       appVersion: APP_VERSION,
       deviceId: dev.id,
       label: dev.label,
-    });
+    };
+    const ref = fbDb.collection("users").doc(userId).collection("meta").doc("syncStatus");
+    const patch = { updatedAt: Date.now() };
+    patch["devices." + dev.id] = row;
+    try {
+      await ref.update(patch);
+    } catch (e) {
+      const code = e && e.code ? String(e.code) : "";
+      const missing = code === "not-found" || /No document to update/i.test(String((e && e.message) || ""));
+      if (!missing) throw e;
+      await ref.set({ devices: { [dev.id]: row }, updatedAt: patch.updatedAt });
+    }
   }
   async function publishPresenceOpen() {
     if (!session || !firebaseConfigured()) return;
@@ -2444,29 +2486,27 @@ function loadProgress(id) {
       labels[1].textContent = tr("day." + d.weekday);
       box.appendChild(el);
     });
-    const diag = khawlaSyncDiag || {};
-    const deviceRows = Object.keys(data.devices || {}).map((id) => Object.assign({ id }, data.devices[id]));
-    const version = (data.presence && data.presence.appVersion) || diag.appVersion || "";
+    const deviceRows = L.activityDeviceViews(data, khawlaSyncDiag, APP_VERSION);
+    const version = (data.presence && data.presence.appVersion) || "";
     const lastOk = Math.max(
       (data.presence && data.presence.lastSyncOk) || 0,
-      Number(diag.lastOk) || 0,
       ...deviceRows.map((d) => d.lastSyncOk || 0)
     );
-    const errRow = deviceRows.slice().sort((a, b) => (b.lastSyncErrorAt || 0) - (a.lastSyncErrorAt || 0))[0];
-    const diagKnown = !!(diag && (diag.at || diag.ok || diag.error || diag.lastOk || diag.appVersion));
-    const staleDeviceErr = errRow && errRow.lastSyncError && (errRow.lastSyncErrorAt || 0) >= lastOk;
-    const err = diagKnown ? (diag.error || "") : (staleDeviceErr ? errRow.lastSyncError : "");
+    const errRow = deviceRows.filter((d) => d.state === "error" && d.error).sort((a, b) => (b.at || 0) - (a.at || 0))[0];
     const versionEl = $("#activityVersion");
-    if (versionEl) versionEl.textContent = version ? tr("sync.version", { v: version }) : tr("activity.versionUnknown");
+    if (versionEl) {
+      const base = version ? tr("sync.version", { v: version }) : tr("activity.versionUnknown");
+      versionEl.textContent = L.isOldBuild(version, APP_VERSION) ? base + " · " + tr("activity.oldBuild") : base;
+    }
     const okEl = $("#activitySyncOk");
     if (okEl) {
-      const who = diag.label ? " · " + diag.label : "";
+      const who = deviceRows.filter((d) => d.lastSyncOk === lastOk && d.label)[0];
       okEl.textContent = lastOk
-        ? tr("activity.syncOk", { when: formatActivityWhen(lastOk, now) }) + who
+        ? tr("activity.syncOk", { when: formatActivityWhen(lastOk, now) }) + (who ? " · " + who.label : "")
         : tr("activity.syncOkNever");
     }
     const errEl = $("#activitySyncErr");
-    if (errEl) errEl.textContent = err ? tr("sync.errorLine", { err }) : tr("activity.syncErrNone");
+    if (errEl) errEl.textContent = errRow ? tr("sync.errorLine", { err: errRow.error }) + (errRow.label ? " · " + errRow.label : "") : tr("activity.syncErrNone");
     const mine = currentDevice().id;
     const devicesEl = $("#activityDevices");
     if (devicesEl) {
@@ -2484,21 +2524,29 @@ function loadProgress(id) {
           tag.textContent = tr("activity.thisDevice");
           title.appendChild(tag);
         }
+        if (d.old) {
+          const old = document.createElement("span");
+          old.className = "old-tag";
+          old.textContent = tr("activity.oldBuild");
+          title.appendChild(old);
+        }
         const meta = document.createElement("p");
         meta.className = "muted small";
         const bits = [];
         if (d.appVersion) bits.push(tr("sync.version", { v: d.appVersion }));
+        else bits.push(tr("activity.versionUnknown"));
         if (d.lastSeen) bits.push(tr("activity.seen", { when: formatActivityWhen(d.lastSeen, now) }));
-        bits.push(d.lastSyncOk ? tr("activity.deviceSync", { when: formatActivityWhen(d.lastSyncOk, now) }) : tr("activity.deviceSyncNever"));
+        if (d.state === "notSet" && !d.lastSyncOk) bits.push(tr("sync.notSet"));
+        else bits.push(d.lastSyncOk ? tr("activity.deviceSync", { when: formatActivityWhen(d.lastSyncOk, now) }) : tr("activity.deviceSyncNever"));
         meta.textContent = bits.join(" · ");
         const counts = document.createElement("p");
         counts.className = "muted small";
         counts.textContent = tr("activity.deviceCounts", { sessions: d.sessions || 0, attempts: d.attempts || 0 });
         el.append(title, meta, counts);
-        if (d.lastSyncError) {
+        if (d.error) {
           const line = document.createElement("p");
           line.className = "status small";
-          line.textContent = tr("sync.errorLine", { err: d.lastSyncError });
+          line.textContent = tr("sync.errorLine", { err: d.error });
           el.appendChild(line);
         }
         devicesEl.appendChild(el);
@@ -2516,7 +2564,8 @@ function loadProgress(id) {
       sessions.forEach((s) => {
         const li = document.createElement("li");
         const name = document.createElement("span");
-        name.textContent = (s.label || tr("activity.unknownDevice")) + (s.deviceId === mine ? " · " + tr("activity.thisDevice") : "");
+        const live = deviceRows.find((d) => d.id === s.deviceId);
+        name.textContent = ((live && live.label) || s.label || tr("activity.unknownDevice")) + (s.deviceId === mine ? " · " + tr("activity.thisDevice") : "");
         const when = document.createElement("span");
         when.textContent = (s.at ? formatActivityWhen(s.at, now) : "") + " · " + tr("activity.sessionTries", { n: s.attempts || 0 });
         li.append(name, when);
@@ -2751,6 +2800,22 @@ function loadProgress(id) {
     else refreshKeyWall(false).finally(() => { if (!keyWallKind) maybeStartGuide(); });
     syncNow().finally(() => { if (session === "farouk") watchKhawlaActivity(); }).catch(() => {});
     publishPresenceOpen();
+    publishHardwareLabel();
+  }
+  function publishHardwareLabel() {
+    refineDeviceHardware().then((dev) => {
+      renderSyncStatus();
+      if (!session || !dev) return;
+      if (session === "khawla") {
+        saveActivity(L.noteDeviceSync(loadActivity(), {
+          deviceId: dev.id, label: dev.label, appVersion: APP_VERSION, at: Date.now(),
+        }));
+        pushActivity();
+      }
+      const meta = (loadRaw(LS_SYNC, {}) || {})[session] || null;
+      if (meta && (meta.at || meta.lastOk || meta.error)) writeSyncDiag(session, meta).catch(() => {});
+      publishPresenceOpen();
+    }).catch(() => {});
   }
   function logout() {
     if (session === "khawla") onKhawlaHidden();
@@ -2883,14 +2948,7 @@ function loadProgress(id) {
     };
     const deviceName = $("#deviceName");
     if (deviceName) deviceName.addEventListener("change", () => {
-      const dev = saveDeviceName(deviceName.value);
-      if (session === "khawla") {
-        saveActivity(L.noteDeviceSync(loadActivity(), {
-          deviceId: dev.id, label: dev.label, appVersion: APP_VERSION, at: Date.now(),
-        }));
-        pushActivity();
-        publishPresenceOpen();
-      }
+      saveDeviceName(deviceName.value);
       renderSyncStatus();
     });
     $("#exportMine").onclick = exportMine;
@@ -3080,6 +3138,7 @@ function loadProgress(id) {
   }
 
   function init() {
+    refineDeviceHardware();
     migrate();
     absorbLegacyProgress();
     consumeSetup();

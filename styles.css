@@ -259,7 +259,9 @@ button.text-link{background:none;border:0;padding:0;margin:0;color:#1f7a4d;font:
 .device-row{background:#fdf6fa;border-radius:14px;padding:10px 12px}
 .device-row b{display:block;font-size:.95rem}
 .device-row p{margin:2px 0 0}
-.you-tag{display:inline-block;margin-left:6px;font-size:.72rem;font-weight:800;background:var(--sun);border-radius:999px;padding:2px 8px;vertical-align:middle}
+.you-tag,.old-tag{display:inline-block;margin-left:6px;font-size:.72rem;font-weight:800;border-radius:999px;padding:2px 8px;vertical-align:middle}
+.you-tag{background:var(--sun)}
+.old-tag{background:#fde2ea;color:#b4234a}
 .presence-line{display:flex;align-items:center;gap:8px;font-weight:800;margin:8px 0 0;font-size:1.05rem}
 .presence-dot{width:12px;height:12px;border-radius:50%;background:#d9c6cf;flex:0 0 auto}
 .presence-dot.on{background:#2fbe6a;box-shadow:0 0 0 4px rgba(47,190,106,.22)}

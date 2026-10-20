@@ -248,12 +248,12 @@ const suggested = G.suggestStart(units, items, placementIds, placementIds.map((i
 assert.equal(suggested, byId.get(placementIds[3]).unitId);
 
 const sw = fs.readFileSync(new URL("../sw.js", import.meta.url), "utf8");
-assert.match(sw, /khawla-aussprache-v15/);
+assert.match(sw, /khawla-aussprache-v16/);
 assert.match(sw, /skipWaiting/);
 assert.match(sw, /clients\.claim/);
 assert.match(sw, /sw-activated/);
 const appSrc = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
-assert.match(appSrc, /khawla-aussprache-v15/);
+assert.match(appSrc, /khawla-aussprache-v16/);
 assert.match(appSrc, /controllerchange/);
 assert.match(appSrc, /reg\.update\(/);
 assert.match(sw, /grammatik-beta/);
